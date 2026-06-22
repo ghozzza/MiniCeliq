@@ -1,0 +1,34 @@
+{
+  "network": "celo-mainnet",
+  "chainId": 42220,
+  "deployedAt": "2026-06-22",
+  "contract": "NewsSubscription (UUPS proxy)",
+  "proxy": "0x3988b17eb4134eB929118244Be69798b5dF69ce7",
+  "implementation": "0xa0e3B8672f628B0146E23382845b0625A4D2F722",
+  "admin": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
+  "treasury": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
+  "deployer": "0xA3235414Ba1444Aaceb667e3161B183B67B8Ce49",
+  "deployBlock": 70222870,
+  "verified": true,
+  "txHashes": {
+    "implementation": "0xaabccdeb35c3408af7777e46b47b1843d927656874a8e73fe960fb15c014dd90",
+    "proxy": "0x9a0ad72d901ce071cf11a0ba8c73fdd4dc3a0e254a8a14acdf20ac33484797ee"
+  },
+  "explorer": {
+    "proxy": "https://celoscan.io/address/0x3988b17eb4134eb929118244be69798b5df69ce7",
+    "implementation": "https://celoscan.io/address/0xa0e3b8672f628b0146e23382845b0625a4d2f722"
+  },
+  "roles": {
+    "DEFAULT_ADMIN_ROLE": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
+    "MANAGER_ROLE": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
+    "UPGRADER_ROLE": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45"
+  },
+  "pricing": {
+    "monthlyUsd": 5,
+    "yearlyUsd": 50,
+    "monthlyPromoUsd": 0.1,
+    "promoEndsAt": 1782864000,
+    "promoEndsAtISO": "2026-07-01T00:00:00Z",
+    "tokens": ["USDm", "USDC", "USDT"]
+  }
+}
