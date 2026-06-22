@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnp.*
+
+# env (never commit secrets; keep the examples)
+.env
+.env.*
+!.env.example
+
+# next.js
+.next/
+out/
+
+# builds
+dist/
+build/
+
+# hardhat / foundry
+artifacts/
+cache/
+typechain-types/
+coverage/
+out/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# vercel
+.vercel
+
+# misc
+.DS_Store
+*.log
+*.pem
+
+# local AI-agent skill reference (celopedia) — not part of the MiniCeliq app
+.agents/
+skills-lock.json
