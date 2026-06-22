@@ -20,16 +20,16 @@ const TIMEOUT_MS = 30_000;
 
 const SYSTEM_PROMPT =
   "You are a concise crypto + macro news editor for a mobile app. " +
-  "Write a plain-English summary using ONLY the text you are given in the user " +
-  "message. Do not invent facts. " +
-  "Output the summary text and nothing else: no preamble, no labels, no quotes, " +
-  "no hype, no emojis, no markdown. " +
-  "Never reference a URL, link, web page, or article location. " +
-  "Never mention yourself, the model, or any limitation. " +
-  "Never write phrases like \"I don't have access\", \"based on the headline alone\", " +
-  "\"as an AI\", \"unable to\", \"cannot access\", or any meta-commentary about what " +
-  "you can or cannot do. If the input is thin, still write a confident, neutral " +
-  "summary from what is provided.";
+  "You ALWAYS return a short summary. You never refuse, never apologize, never ask " +
+  "for more text, and never comment on how much information you were given. " +
+  "Use the title plus any provided text; if the text is thin, expand the headline " +
+  "into a confident, neutral summary using general background — but do not invent " +
+  "specific facts (no fabricated numbers, names, dates, or quotes). " +
+  "Output only the summary itself: no preamble, labels, quotes, hype, emojis, or markdown. " +
+  "Never reference a URL, link, web page, the article's location, your own access, or " +
+  "yourself. Never write phrases like \"I cannot\", \"I can't\", \"I don't have\", " +
+  "\"no actual article content\", \"please provide\", \"the text provided\", \"only a " +
+  "title\", \"as an AI\", \"unable to\", or \"based on the headline\".";
 
 // In-memory summary cache, used when Supabase is not configured.
 const memorySummaries = new Map<string, SummaryRecord>();
@@ -129,23 +129,28 @@ async function callModel(modelId: string, prompt: string): Promise<string> {
 //     headline.
 function buildPrompt(article: NewsItem | null, fallbackTitle?: string): string {
   const title = article?.title ?? fallbackTitle ?? "(unknown)";
-  const body = article?.content?.trim();
+  const source = article?.source;
+  const body = article?.content?.trim() ?? "";
+  // Generic RSS teasers ("Your day-ahead look for…") are too thin to summarize —
+  // treat anything under ~80 chars as headline-only so the model rewrites the
+  // headline instead of refusing for "no content".
+  const hasBody = body.length >= 80;
 
-  if (body) {
+  if (hasBody) {
     return (
       `Title: ${title}\n` +
-      (article?.source ? `Source: ${article.source}\n` : "") +
+      (source ? `Source: ${source}\n` : "") +
       `\nArticle text:\n${body}\n\n` +
-      "Summarize the article text above in 2-3 short sentences (max ~60 words), " +
-      "plain English, no hype, no emojis. Cover what happened and why it matters."
+      "Summarize the above in 2-3 short sentences (max ~60 words), plain English, " +
+      "no hype, no emojis. Cover what happened and why it matters."
     );
   }
 
   return (
     `Headline: ${title}\n` +
-    (article?.source ? `Source: ${article.source}\n` : "") +
-    "\nWrite a neutral 1-2 sentence context note that expands this headline into " +
-    "plain language. Do not speculate beyond the headline."
+    (source ? `Source: ${source}\n` : "") +
+    "\nRewrite this headline into ONE neutral, plain-language sentence (max 25 words) " +
+    "that a reader understands at a glance. Output only that sentence."
   );
 }
 
