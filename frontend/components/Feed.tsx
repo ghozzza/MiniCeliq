@@ -7,7 +7,7 @@
 // Decoration only (no behavior change): a calm stat ribbon, a featured lead story
 // with a serif drop cap, and a subtle fade-up reveal on the rows. All motion is
 // disabled under prefers-reduced-motion (see globals.css).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchNews, type NewsItem } from "@/lib/api";
 import { copy } from "@/lib/copy";
 import { formatRelative } from "@/lib/time";
@@ -125,18 +125,47 @@ function CompactRow({
 export function Feed({ onOpenSummary }: FeedProps) {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [error, setError] = useState(false);
+  // Tracks whether we've ever loaded, so a failed *background* refresh never
+  // blanks a feed we already have on screen.
+  const loadedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetchNews()
-      .then(({ items }) => {
-        if (!cancelled) setItems(items);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      });
+
+    const load = () => {
+      fetchNews()
+        .then(({ items: next }) => {
+          if (cancelled) return;
+          loadedRef.current = true;
+          setItems(next);
+          setError(false);
+        })
+        .catch(() => {
+          // Only surface an error on the very first load; a transient poll/refresh
+          // failure keeps the last good feed (and its relative times) on screen.
+          if (!cancelled && !loadedRef.current) setError(true);
+        });
+    };
+
+    load();
+
+    // MiniPay has no pull-to-refresh / reload button, so keep the feed fresh on its
+    // own: poll every 90s while visible, and re-fetch the instant the app regains
+    // focus after the user has been idle or backgrounded.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 90_000);
+    const onFocus = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 
