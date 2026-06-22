@@ -27,22 +27,21 @@ export interface SummaryResult {
   remaining?: number;
 }
 
+export interface VolumeByToken {
+  token: string; // token contract address
+  volume: string; // summed amount, token-native units (stringified bigint)
+  count: number;
+}
+
+// Matches the backend `GET /api/stats` payload (analytics from indexed Subscribed
+// events). On-chain only for now; DAU/MAU/retention come from web analytics later.
 export interface StatsResult {
-  usage: {
-    dau: number;
-    mau: number;
-    retentionD7: number; // 0..1
-  };
-  onchain: {
-    txLifetime: number;
-    uniqueSubscribers: number;
-    volumeUsd: number;
-    networkFeesUsd: number;
-    failedTxRate: number; // 0..1
-  };
-  // True when these are placeholder/mock numbers (BE not wired yet).
-  mock?: boolean;
-  updatedAt?: string;
+  subscriberCount: number;
+  totalSubscriptions: number;
+  txPerDay: { date: string; count: number }[];
+  volumeByToken: VolumeByToken[];
+  // False until the indexer has data (no Supabase / contract not deployed yet).
+  available: boolean;
 }
 
 // ---- Mock fallbacks ----
@@ -75,16 +74,15 @@ const MOCK_NEWS: NewsItem[] = [
 ];
 
 const MOCK_STATS: StatsResult = {
-  usage: { dau: 0, mau: 0, retentionD7: 0 },
-  onchain: {
-    txLifetime: 0,
-    uniqueSubscribers: 0,
-    volumeUsd: 0,
-    networkFeesUsd: 0,
-    failedTxRate: 0,
-  },
-  mock: true,
+  subscriberCount: 0,
+  totalSubscriptions: 0,
+  txPerDay: [],
+  volumeByToken: [],
+  available: false,
 };
+
+const MOCK_SUMMARY =
+  "Sample summary: this is a placeholder until the backend is connected. The real feature condenses the article into a few neutral bullet points.";
 
 // Small typed fetch wrapper: returns null on any failure so callers can fall back.
 async function tryFetch<T>(
@@ -117,16 +115,36 @@ export async function fetchSummary(
   articleId: string,
   address: string | null,
 ): Promise<SummaryResult> {
-  const data = await tryFetch<SummaryResult>("/api/news/summarize", {
-    method: "POST",
-    body: JSON.stringify({ articleId, address }),
-  });
-  if (data) return data;
-  // Mock summary so the UI demos even with no backend.
-  return {
-    summary:
-      "Sample summary: this is a placeholder until the backend is connected. The real feature condenses the article into a few neutral bullet points.",
-  };
+  // No backend configured → demo with a mock summary.
+  if (!API_URL) return { summary: MOCK_SUMMARY };
+  try {
+    const res = await fetch(`${API_URL}/api/news/summarize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ articleId, address }),
+      cache: "no-store",
+    });
+
+    // Free quota exhausted → signal the paywall (BE returns HTTP 402). This MUST
+    // be distinguished from other failures, otherwise the gate never triggers.
+    if (res.status === 402) return { summary: "", gated: true };
+
+    // AI key unset (503) / bad input (400) / network → graceful mock so the UI demos.
+    if (!res.ok) return { summary: MOCK_SUMMARY };
+
+    const data = (await res.json()) as {
+      summary: string;
+      quota?: { unlimited: boolean; used: number | null; limit: number | null };
+    };
+    const q = data.quota;
+    const remaining =
+      q && !q.unlimited && q.limit != null && q.used != null
+        ? Math.max(0, q.limit - q.used)
+        : undefined;
+    return { summary: data.summary, remaining };
+  } catch {
+    return { summary: MOCK_SUMMARY };
+  }
 }
 
 export async function fetchStats(): Promise<StatsResult> {
