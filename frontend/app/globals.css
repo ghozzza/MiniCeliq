@@ -94,6 +94,61 @@ body {
   animation: pulse 2.4s ease-in-out infinite;
 }
 
+/* Slow, very low-opacity ambient drift behind all content — a quietly "living"
+ * backdrop that stays subtle/editorial. GPU-only (transform/opacity), no JS, and
+ * frozen under prefers-reduced-motion by the global block below. */
+@keyframes auroraDriftA {
+  0%,
+  100% {
+    transform: translate3d(-6%, -4%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(7%, 5%, 0) scale(1.18);
+  }
+}
+@keyframes auroraDriftB {
+  0%,
+  100% {
+    transform: translate3d(6%, 6%, 0) scale(1.12);
+  }
+  50% {
+    transform: translate3d(-6%, -5%, 0) scale(1);
+  }
+}
+.aurora {
+  position: fixed;
+  inset: -25%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.aurora::before,
+.aurora::after {
+  content: "";
+  position: absolute;
+  width: 75vw;
+  height: 75vw;
+  max-width: 520px;
+  max-height: 520px;
+  border-radius: 9999px;
+  filter: blur(64px);
+  will-change: transform;
+}
+.aurora::before {
+  top: -8%;
+  left: -12%;
+  background: var(--color-accent);
+  opacity: 0.09;
+  animation: auroraDriftA 28s ease-in-out infinite;
+}
+.aurora::after {
+  bottom: -10%;
+  right: -12%;
+  background: var(--color-ink);
+  opacity: 0.06;
+  animation: auroraDriftB 34s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

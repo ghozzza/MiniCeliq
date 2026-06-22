@@ -58,6 +58,9 @@ export default function RootLayout({
       className={`${newsreader.variable} ${plexSans.variable} ${plexMono.variable} h-full`}
     >
       <body className="font-plex-sans relative mx-auto flex min-h-full max-w-md flex-col bg-warm text-ink antialiased">
+        {/* Ambient animated backdrop — slow, very subtle drifting color behind all content. */}
+        <div className="aurora" aria-hidden />
+
         {/* Faint editorial watermark — a single large serif "C" sitting behind all
             content. Static (no animation), non-interactive, and excluded from
             layout/scroll/tap targets so it can never affect the MiniPay UX. */}
