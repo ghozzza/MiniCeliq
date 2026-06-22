@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMiniPay } from "@/hooks/useMiniPay";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Feed } from "@/components/Feed";
+import { Masthead } from "@/components/Masthead";
 import { SummaryCard } from "@/components/SummaryCard";
 import { Paywall } from "@/components/Paywall";
 import { SubscribeSheet } from "@/components/SubscribeSheet";
@@ -27,11 +28,16 @@ export default function HomePage() {
 
   return (
     <div>
-      {/* Masthead: edition-style section label + subscription state.
+      {/* Newspaper masthead: double rule + date + edition + launch-promo strip. */}
+      <Masthead />
+
+      {/* Section label + subscription state.
           Never a raw 0x as the primary identifier (kept in title attr only). */}
-      <div className="border-b-[0.5px] border-rule px-4 pb-3 pt-5">
-        <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
-          {copy.feed.title}
+      <div className="border-b-[0.5px] border-rule px-4 pb-3 pt-4">
+        <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
+          {/* Live pulse dot = "live news". */}
+          <span className="live-dot" aria-hidden />
+          <span>{copy.feed.title}</span>
         </div>
         <h1
           className="font-newsreader mt-1 text-[26px] font-bold leading-[1.1] tracking-[-0.02em] text-ink"

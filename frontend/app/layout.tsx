@@ -57,7 +57,19 @@ export default function RootLayout({
       lang="en"
       className={`${newsreader.variable} ${plexSans.variable} ${plexMono.variable} h-full`}
     >
-      <body className="font-plex-sans mx-auto flex min-h-full max-w-md flex-col bg-warm text-ink antialiased">
+      <body className="font-plex-sans relative mx-auto flex min-h-full max-w-md flex-col bg-warm text-ink antialiased">
+        {/* Faint editorial watermark — a single large serif "C" sitting behind all
+            content. Static (no animation), non-interactive, and excluded from
+            layout/scroll/tap targets so it can never affect the MiniPay UX. */}
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-0 flex select-none items-center justify-center overflow-hidden"
+        >
+          <span className="font-newsreader text-[58vw] font-extrabold leading-none tracking-[-0.04em] text-ink opacity-[0.025]">
+            C
+          </span>
+        </div>
+
         {/* App ownership: serif wordmark + green accent, clearly distinct from MiniPay. */}
         <header className="sticky top-0 z-30 flex items-center justify-between border-b-[0.5px] border-rule bg-warm/92 px-4 py-3 backdrop-blur">
           <Link href="/" className="flex items-center gap-2 no-underline">
@@ -89,9 +101,9 @@ export default function RootLayout({
           </nav>
         </header>
 
-        <main className="flex-1">{children}</main>
+        <main className="relative z-10 flex-1">{children}</main>
 
-        <footer className="border-t-[0.5px] border-rule px-4 pb-6 pt-8">
+        <footer className="relative z-10 border-t-[0.5px] border-rule px-4 pb-6 pt-8">
           <div className="font-newsreader text-[22px] font-extrabold tracking-[-0.02em] text-ink">
             MiniCeliq<span className="text-accent">.</span>
           </div>
