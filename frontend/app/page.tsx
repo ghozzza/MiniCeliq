@@ -4,18 +4,21 @@
 import { useState } from "react";
 import { useMiniPay } from "@/hooks/useMiniPay";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useCenyBalance } from "@/hooks/useCenyBalance";
 import { Feed } from "@/components/Feed";
 import { Masthead } from "@/components/Masthead";
 import { SummaryCard } from "@/components/SummaryCard";
 import { Paywall } from "@/components/Paywall";
 import { SubscribeSheet } from "@/components/SubscribeSheet";
 import { copy } from "@/lib/copy";
+import { formatCeny } from "@/lib/contract";
 import { shortAddress } from "@/lib/viem";
 import type { NewsItem } from "@/lib/api";
 
 export default function HomePage() {
   const { address, isMiniPay, isLoading, preferred } = useMiniPay();
   const { isActive, expiry, refresh: refreshSub } = useSubscription(address);
+  const { balance: cenyBalance, refresh: refreshCeny } = useCenyBalance(address);
 
   const [openItem, setOpenItem] = useState<NewsItem | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -38,6 +41,14 @@ export default function HomePage() {
           {/* Live pulse dot = "live news". */}
           <span className="live-dot" aria-hidden />
           <span>{copy.feed.title}</span>
+          {/* CENY reward balance pill — subtle, accent-toned, hidden at zero. */}
+          {address && cenyBalance > 0n && (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 normal-case tracking-normal text-accent">
+              <span aria-hidden>◆</span>
+              <span className="font-plex-mono num">{formatCeny(cenyBalance)}</span>{" "}
+              {copy.reward.unit}
+            </span>
+          )}
         </div>
         <h1
           className="font-newsreader mt-1 text-[26px] font-bold leading-[1.1] tracking-[-0.02em] text-ink"
@@ -99,6 +110,8 @@ export default function HomePage() {
           onClose={() => setShowSubscribe(false)}
           onSubscribed={() => {
             refreshSub();
+            // Subscribe mints a CENY reward — re-read so the pill updates.
+            refreshCeny();
           }}
         />
       )}

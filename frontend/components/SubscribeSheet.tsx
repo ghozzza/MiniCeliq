@@ -9,12 +9,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { copy } from "@/lib/copy";
 import {
+  CENY_CONFIGURED,
   CONTRACT_CONFIGURED,
   PLAN_MONTHLY,
   PLAN_YEARLY,
   type Plan,
   approve,
+  formatCeny,
   readAllowance,
+  readCenyBalance,
+  readCenyReward,
   readCurrentPrice,
   subscribe,
   waitForSuccess,
@@ -67,8 +71,17 @@ export function SubscribeSheet({
   const [status, setStatus] = useState<FlowStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // CENY reward for the selected plan, stored with the plan it belongs to so a
+  // plan switch re-derives cleanly (same cascade-free pattern as `priced`).
+  const [rewarded, setRewarded] = useState<{ plan: Plan; value: bigint } | null>(
+    null,
+  );
+  // The connected user's CENY balance (read once per address; 0n = none/unset).
+  const [cenyBalance, setCenyBalance] = useState<bigint>(0n);
+
   const selectionKey = `${token.symbol}:${plan}`;
   const price = priced?.key === selectionKey ? priced.value : null;
+  const reward = rewarded?.plan === plan ? rewarded.value : null;
 
   // Read the live, promo-aware price whenever plan or token changes. The only
   // setState happens after the awaited read (in .then), so no sync cascade.
@@ -87,6 +100,40 @@ export function SubscribeSheet({
       cancelled = true;
     };
   }, [token, plan]);
+
+  // Read the CENY reward for the selected plan. Mirrors the price effect: the only
+  // setState is inside `.then`, and a read failure leaves the reward hidden.
+  useEffect(() => {
+    if (!CONTRACT_CONFIGURED) return;
+    let cancelled = false;
+    const p = plan;
+    readCenyReward(p)
+      .then((r) => {
+        if (!cancelled) setRewarded({ plan: p, value: r });
+      })
+      .catch(() => {
+        // Hide the reward line on error — never block the flow.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plan]);
+
+  // Read this user's CENY balance once per address. setState only after the await.
+  useEffect(() => {
+    if (!CENY_CONFIGURED) return;
+    let cancelled = false;
+    readCenyBalance(address)
+      .then((b) => {
+        if (!cancelled) setCenyBalance(b);
+      })
+      .catch(() => {
+        if (!cancelled) setCenyBalance(0n);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
 
   const humanPrice = useMemo(() => {
     if (price === null) return null;
@@ -180,9 +227,20 @@ export function SubscribeSheet({
           </div>
         ) : (
           <>
-            <p className="mb-1 text-[11px] uppercase tracking-[0.09em] text-accent">
-              MiniCeliq Plus
-            </p>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-[0.09em] text-accent">
+                MiniCeliq Plus
+              </p>
+              {cenyBalance > 0n && (
+                <p className="text-[11px] text-ink-muted">
+                  {copy.reward.youHold}{" "}
+                  <span className="font-plex-mono num text-ink-2">
+                    {formatCeny(cenyBalance)}
+                  </span>{" "}
+                  {copy.reward.unit}
+                </p>
+              )}
+            </div>
             <h2 className="font-newsreader text-[22px] font-bold leading-[1.15] tracking-[-0.015em] text-ink">
               {copy.subscribe.title}
             </h2>
@@ -254,6 +312,19 @@ export function SubscribeSheet({
                 </span>
               )}
             </div>
+
+            {/* CENY reward perk — a soft accent chip under the price. */}
+            {reward !== null && reward > 0n && (
+              <div className="mt-3">
+                <span className="inline-flex items-center gap-1 bg-accent-soft px-2.5 py-1 text-[12px] font-medium text-accent">
+                  <span aria-hidden>+</span> {copy.reward.earn}{" "}
+                  <span className="font-plex-mono num font-semibold">
+                    {formatCeny(reward)}
+                  </span>{" "}
+                  {copy.reward.unit}
+                </span>
+              </div>
+            )}
 
             <p className="mt-2 text-[11px] text-ink-muted">
               {copy.subscribe.networkFeeNote}

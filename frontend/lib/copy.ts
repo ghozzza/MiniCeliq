@@ -60,6 +60,12 @@ export const copy = {
     activeTitle: "You're subscribed",
     activeUntil: "Active until",
   },
+  // CENY reward token — a perk minted to the subscriber on every subscribe.
+  reward: {
+    earn: "Earn",
+    unit: "CENY",
+    youHold: "You hold",
+  },
   support: {
     label: "Support",
     aria: "Contact support",
