@@ -24,6 +24,30 @@ export function SummaryCard({
 }: SummaryCardProps) {
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const hasUrl = Boolean(item.url && item.url !== "#");
+
+  // Open the original in a NEW context (overlay / system browser) instead of
+  // navigating the mini-app webview in place — otherwise MiniPay replaces MiniCeliq
+  // and there's no way back. window.open also degrades to MiniPay's in-app browser
+  // (which has its own close), never destroying the app underneath.
+  function openOriginal() {
+    if (hasUrl) window.open(item.url, "_blank", "noopener,noreferrer");
+  }
+
+  // Guaranteed no-trap fallback: copy the link so the user can open it in their
+  // own browser later, without leaving MiniCeliq.
+  async function copyLink() {
+    if (!hasUrl) return;
+    try {
+      await navigator.clipboard.writeText(item.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — ignore */
+    }
+  }
 
   // Fetch on mount. The parent keys this component by item.id, so a new article
   // remounts fresh — no synchronous state reset needed here.
@@ -66,18 +90,7 @@ export function SummaryCard({
           {item.title}
         </h2>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] uppercase tracking-[0.09em] text-ink-muted">
-          {item.url && item.url !== "#" ? (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-ink-muted no-underline transition-colors hover:text-accent"
-            >
-              {item.source}
-            </a>
-          ) : (
-            <span>{item.source}</span>
-          )}
+          <span>{item.source}</span>
           {item.publishedAt && (
             <>
               <span aria-hidden>·</span>
@@ -106,15 +119,21 @@ export function SummaryCard({
           </p>
         )}
 
-        {item.url && item.url !== "#" && (
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-block text-[12px] font-medium uppercase tracking-[0.09em] text-accent no-underline transition-colors hover:text-ink"
-          >
-            {copy.summary.readOriginal} ↗
-          </a>
+        {hasUrl && (
+          <div className="mt-4 flex items-center gap-5 text-[12px] font-medium uppercase tracking-[0.09em]">
+            <button
+              onClick={openOriginal}
+              className="text-accent transition-colors active:text-ink"
+            >
+              {copy.summary.readOriginal} ↗
+            </button>
+            <button
+              onClick={copyLink}
+              className="text-ink-muted transition-colors active:text-ink"
+            >
+              {copied ? "Link copied ✓" : "Copy link"}
+            </button>
+          </div>
         )}
 
         <button
