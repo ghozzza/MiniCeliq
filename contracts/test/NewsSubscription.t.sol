@@ -7,7 +7,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 import {NewsSubscription} from "../src/NewsSubscription.sol";
-import {NewsSubscriptionV2} from "./mocks/NewsSubscriptionV2.sol"; // test-only upgrade fixture
+import {NewsSubscriptionUpgradeMock} from "./mocks/NewsSubscriptionUpgradeMock.sol"; // test-only upgrade fixture
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 
 /// @title NewsSubscription test suite
@@ -361,10 +361,12 @@ contract NewsSubscriptionTest is Test {
         // atomically. The plugin validates UUPS storage-layout safety. `startPrank`
         // (not a single `prank`) because `Upgrades.upgradeProxy` makes several calls.
         vm.startPrank(owner);
-        Upgrades.upgradeProxy(proxy, "NewsSubscriptionV2.sol", abi.encodeCall(NewsSubscriptionV2.initializeV2, ()));
+        Upgrades.upgradeProxy(
+            proxy, "NewsSubscriptionUpgradeMock.sol", abi.encodeCall(NewsSubscriptionUpgradeMock.initializeV2, ())
+        );
         vm.stopPrank();
 
-        NewsSubscriptionV2 v2 = NewsSubscriptionV2(proxy);
+        NewsSubscriptionUpgradeMock v2 = NewsSubscriptionUpgradeMock(proxy);
 
         // State preserved across the upgrade.
         assertEq(v2.subscriptionExpiry(alice), aliceExpiry, "subscription state must survive upgrade");
@@ -384,7 +386,7 @@ contract NewsSubscriptionTest is Test {
 
     function test_Upgrade_OnlyUpgraderCanUpgrade() public {
         // A non-upgrader upgrade attempt must revert at _authorizeUpgrade.
-        NewsSubscriptionV2 v2Impl = new NewsSubscriptionV2();
+        NewsSubscriptionUpgradeMock v2Impl = new NewsSubscriptionUpgradeMock();
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, alice, UPGRADER_ROLE)
@@ -395,11 +397,11 @@ contract NewsSubscriptionTest is Test {
     function test_InitializeV2_OnlyUpgraderGuard() public {
         // Two-step upgrade: set the V2 implementation WITHOUT calling initializeV2
         // (empty calldata), authorized by an upgrader.
-        NewsSubscriptionV2 v2Impl = new NewsSubscriptionV2();
+        NewsSubscriptionUpgradeMock v2Impl = new NewsSubscriptionUpgradeMock();
         vm.prank(owner);
         NewsSubscription(proxy).upgradeToAndCall(address(v2Impl), "");
 
-        NewsSubscriptionV2 v2 = NewsSubscriptionV2(proxy);
+        NewsSubscriptionUpgradeMock v2 = NewsSubscriptionUpgradeMock(proxy);
 
         // A front-runner (non-upgrader) must NOT be able to consume the reinitializer slot.
         vm.prank(alice);

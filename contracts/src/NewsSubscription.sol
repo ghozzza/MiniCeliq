@@ -132,7 +132,7 @@ contract NewsSubscription is
     /// @dev Caller must `approve(address(this), price)` on `token` first (no permit — MiniPay can't sign typed data).
     /// @param plan 0 = monthly, 1 = yearly (or any plan with a non-zero `planDuration`).
     /// @param token Allowlisted stablecoin used for payment (USDm / USDC / USDT).
-    function subscribe(uint8 plan, address token) external nonReentrant whenNotPaused {
+    function subscribe(uint8 plan, address token) external virtual nonReentrant whenNotPaused {
         if (!allowedToken[token]) revert TokenNotAllowed(token);
         uint64 duration = planDuration[plan];
         if (duration == 0) revert InvalidPlan(plan);
