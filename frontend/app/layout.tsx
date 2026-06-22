@@ -74,11 +74,12 @@ export default function RootLayout({
         <header className="sticky top-0 z-30 flex items-center justify-between border-b-[0.5px] border-rule bg-warm/92 px-4 py-3 backdrop-blur">
           <Link href="/" className="flex items-center gap-2 no-underline">
             <Image
-              src="/logo.svg"
+              src="/miniceliq_icon.svg"
               alt={`${APP_NAME} logo`}
               width={26}
               height={26}
               priority
+              className="rounded-[7px]"
             />
             <span className="font-newsreader text-[19px] font-extrabold tracking-[-0.02em] text-ink">
               MiniCeliq<span className="text-accent">.</span>
