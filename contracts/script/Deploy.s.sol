@@ -21,6 +21,7 @@ contract Deploy is Script {
     address internal constant USDT_MAINNET = 0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e; // 6 dec
 
     function run() external {
+        uint256 deployerKey = vm.envUint("PRIVATE_KEY"); // signed in-script; never on the CLI
         address owner = vm.envAddress("OWNER_ADDRESS");
         address treasury = vm.envAddress("TREASURY_ADDRESS");
 
@@ -35,7 +36,7 @@ contract Deploy is Script {
         tokens[1] = NewsSubscription.InitToken({token: usdc, monthlyPrice: 5e6, yearlyPrice: 50e6, monthlyPromo: 1e5});
         tokens[2] = NewsSubscription.InitToken({token: usdt, monthlyPrice: 5e6, yearlyPrice: 50e6, monthlyPromo: 1e5});
 
-        vm.startBroadcast();
+        vm.startBroadcast(deployerKey);
         address proxy = Upgrades.deployUUPSProxy(
             "NewsSubscription.sol",
             abi.encodeCall(NewsSubscription.initialize, (owner, treasury, PROMO_ENDS_AT, tokens))

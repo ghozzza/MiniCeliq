@@ -8,15 +8,19 @@ restart). For design rationale see [`../README.md`](../README.md); for repo rule
 
 ## 1. Snapshot — where we are
 
-**Phase: foundation complete (scaffold + audit + hardening). Not yet deployed on-chain.**
+**Phase: contract LIVE + verified on Celo mainnet. FE/BE not yet hosted.**
+
+**Live contract (Celo mainnet, chainId 42220):** proxy `0x3988b17eb4134eB929118244Be69798b5dF69ce7`
+· impl `0xa0e3B8672f628B0146E23382845b0625A4D2F722` · deploy block `70222870` · admin/treasury
+`0x02EF49eDB08779c302770FC25dfDfa79dFB17E45` · both verified on Celoscan. Details: `contracts/deployments/celo-mainnet.json`.
 
 | Area | State |
 |------|-------|
-| Smart contract | ✅ Built (Foundry, UUPS, non-custodial), **19 tests pass**, security-reviewed + hardened. **Not deployed.** |
-| Frontend | ✅ Built (Next.js + viem, MiniPay-compliant), `pnpm build` clean, ~289 KB gzip. Uses mock data until BE/contract wired. |
-| Backend | ✅ Built (Express + TS), `pnpm build` clean, boots with graceful degradation (no secrets needed to run). |
+| Smart contract | ✅ Built (Foundry, UUPS, AccessControl, non-custodial), **20 tests pass**, security-reviewed + hardened. |
+| On-chain deploy | ✅ **Celo mainnet + verified** — proxy `0x3988…69ce7` (block 70222870). PoS hard-gate ✅ |
+| Frontend | ✅ Built (Next.js + viem, MiniPay-compliant), `pnpm build` clean, ~289 KB gzip. Local `.env.local` wired to the live contract. |
+| Backend | ✅ Built (Express + TS), `pnpm build` clean. Local `.env` wired to the live contract (chain reads active). |
 | Security audit | ✅ pashov 12-lens + Celo layer — **0 confirmed findings**, 3 hardening items applied (`contracts/audit/`). |
-| On-chain deploy | ⬜ Pending (needs funded key + RPC). **Proof of Ship hard-gate.** |
 | Live URLs (Vercel/Railway) | ⬜ Pending. **PoS hard-gate.** |
 | Supabase / OpenRouter | ⬜ Pending (BE runs without them, degraded). |
 | Talent App registration | ⬜ Pending. **PoS hard-gate.** |
