@@ -3,6 +3,11 @@
 MiniCeliq is a **MiniPay (Celo) mini app** for stablecoin news subscriptions, built for the
 **Celo Proof of Ship** program. Standalone repo — **independent of any other codebase**.
 
+> **Fully hosted:** FE live on Vercel at `https://mini.celiq.io` (custom domain + SSL), BE live on
+> Railway at `https://miniceliq-backend-production.up.railway.app`. cloudflared tunnels are **retired**
+> (local dev only). All Proof-of-Ship hard-gates are met (mainnet contract, public repo, live URL,
+> Talent App registration).
+
 > **Full status, roadmap, and resume/deploy steps:** [`docs/STATUS.md`](docs/STATUS.md).
 > **Architecture & design rationale:** [`README.md`](README.md).
 > **Language:** all docs & code comments in **English** (Proof of Ship requirement).
@@ -12,8 +17,8 @@ MiniCeliq is a **MiniPay (Celo) mini app** for stablecoin news subscriptions, bu
 | Dir | Stack | Deploy | Build / test |
 |-----|-------|--------|--------------|
 | `contracts/` | Foundry + OpenZeppelin Upgradeable v5 (UUPS) | Celo (live on Mainnet, **V2**) | `forge build` · `forge test` (**42 pass** — `NewsSubscriptionV2` 11 + `NewsSubscription` V1 20 + `Ceny` 11) |
-| `frontend/` | Next.js 16 (App Router) + TypeScript + Tailwind + **viem** | Vercel (**live: `https://miniceliq.vercel.app`**) | `pnpm install` · `pnpm build` |
-| `backend/` | Express 4 + TypeScript + viem + Supabase | IDCloudHost VPS | `pnpm install` · `pnpm build` |
+| `frontend/` | Next.js 16 (App Router) + TypeScript + Tailwind + **viem** | Vercel (**live: `https://mini.celiq.io`**) | `pnpm install` · `pnpm build` |
+| `backend/` | Express 4 + TypeScript + viem + Supabase | **Railway** (**live: `https://miniceliq-backend-production.up.railway.app`**) | `pnpm install` · `pnpm build` |
 
 Each sub-project has its own `package.json` / lockfile / `.env.example`. `contracts/lib/` is
 git-ignored — run the pinned `forge install` commands in `contracts/README.md` after clone.

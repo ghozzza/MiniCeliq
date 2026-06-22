@@ -2,7 +2,7 @@
 
 > **Name:** MiniCeliq (the MiniPay edition). Shares branding with Celiq only — **no shared code,
 > data, auth, or runtime**.
-> **Status:** Contract live on Celo mainnet (**V2 — auto-mints a CENY reward on subscribe**) + verified; **Ceny (CENY) reward token live + verified**; **frontend live on Vercel** (`https://miniceliq.vercel.app`, custom domain `mini.celiq.io` pending DNS); backend still runs locally (cloudflared tunnel) with VPS hosting pending. Live status & resume steps: [`docs/STATUS.md`](docs/STATUS.md).
+> **Status:** **Full stack live + hosted.** Contract live on Celo mainnet (**V2 — auto-mints a CENY reward on subscribe**) + verified; **Ceny (CENY) reward token live + verified**; **frontend live on Vercel at `https://mini.celiq.io`** (custom domain + SSL live); **backend live on Railway** (`https://miniceliq-backend-production.up.railway.app`); **registered on Talent App**. **All Proof-of-Ship hard-gates met**; cloudflared tunnels retired (local dev only). Live status & resume steps: [`docs/STATUS.md`](docs/STATUS.md).
 > **Target:** Celo **Proof of Ship** (MiniPay track) + MiniPay Discovery listing.
 > **Language policy:** All docs and code comments in **English** (Proof of Ship requirement).
 
@@ -54,10 +54,10 @@ These are non-negotiable and shape every layer. Sources: `miniapps/.agents/skill
 - **360 × 640 mobile** — design and verify at this resolution.
 - **UI copy rules (enforced at review):** `Gas`→**Network fee**, `Onramp/Buy`→**Deposit**, `Offramp/Sell`→**Withdraw**, `Crypto`→**Stablecoin** / **Digital dollar**, never raw `0x…` as the primary identifier.
 
-### Proof of Ship qualification (hard gates)
-- ✅ At least one contract deployed on **Celo Mainnet** (not just testnet).
+### Proof of Ship qualification (hard gates) — all met ✅
+- ✅ At least one contract deployed on **Celo Mainnet** (NewsSubscription V2 + Ceny, not just testnet).
 - ✅ **Public GitHub** repo with real commits.
-- ✅ **Live, functional** app URL.
+- ✅ **Live, functional** app URL — `https://mini.celiq.io`.
 - ✅ Registered on **Talent App** for the active campaign (`talent.app/~/earn/celo-proof-of-ship`).
 - 🟡 MiniPay `isMiniPay()` hook = scoring booster (include the hook path in Talent App Data Sources for tracking).
 
@@ -150,8 +150,8 @@ Each of `contracts/`, `backend/`, `frontend/` is a **standalone project** with i
 | **Data store** | **Supabase (own, new project)** | News cache, AI-summary cache, analytics. Separate project from Celiq |
 | **News source** | Free **RSS** (CoinDesk, Cointelegraph, Decrypt) via `rss-parser` | Free, proven (same approach Celiq uses), no API quota |
 | **AI summaries** | Vercel **AI SDK** via OpenRouter | Same provider family the team already uses |
-| **Reward token** | **Ceny (CENY)** — ERC-20, capped (1B), UUPS, AccessControl | **Live + verified on Celo mainnet** (proxy `0xFacb…d6aB`); auto-minted on `subscribe` via NewsSubscription **V2** (10 CENY monthly / 120 CENY yearly, best-effort) |
-| **Deploy** | FE → **Vercel** (live at `https://miniceliq.vercel.app`; domain `mini.celiq.io` pending DNS), BE → **IDCloudHost VPS** (pending), contract → **Celo** | Manual-CLI deploy flow; contract live on mainnet (V2), FE live on Vercel |
+| **Reward token** | **Ceny (CENY)** — ERC-20, capped (1B), UUPS, AccessControl | **Live + verified on Celo mainnet** (proxy `0xFacb…d6aB`); auto-minted on `subscribe` via NewsSubscription **V2** (10 CENY monthly / 120 CENY yearly, best-effort). **Surfaced in the FE** — subscribe sheet "+ Earn N CENY" + "You hold X CENY", home masthead "◆ X CENY" balance pill |
+| **Deploy** | FE → **Vercel** (live at `https://mini.celiq.io`, custom domain + SSL), BE → **Railway** (live at `https://miniceliq-backend-production.up.railway.app`), contract → **Celo** | Manual-CLI deploy flow; full stack live + hosted, cloudflared tunnels retired (local dev only) |
 
 ---
 
@@ -449,8 +449,8 @@ From `minipay-requirements.md` — get these right before applying:
 2. **M1 — Contract.** Implement `NewsSubscription` (Foundry), full test suite (subscribe, renew-stacking, allowlist, price-not-set reverts, **promo active vs expired via `currentPrice`**, pause, upgrade-safety, non-custody invariant `balanceOf(contract)==0`). Deploy + verify on **Sepolia** — `Deploy.s.sol` seeds tokens, regular + promo prices, and `promoEndsAt` in the initializer.
 3. **M2 — Frontend MVP.** MiniPay detect/auto-connect, feed, paywall, subscribe (approve + subscribe) on Sepolia. Validate at 360×640 on a real device via ngrok.
 4. **M3 — Backend.** RSS ingest + AI summaries + chain reads + quota gate + `/stats` indexer.
-5. **M4 — Mainnet + ship.** Deploy contract to **Celo Mainnet** (✅ done + verified), migrate owner to multisig, FE→Vercel, BE→IDCloudHost VPS. Collect sample tx hashes.
-6. **M5 — Proof of Ship.** Public GitHub, live URL, register on Talent App, add MiniPay hook path to Data Sources. Drive first real subscribers.
+5. **M4 — Mainnet + ship.** Deploy contract to **Celo Mainnet** (✅ done + verified), FE→Vercel (✅ live at `mini.celiq.io`), BE→Railway (✅ live). Optional later: migrate owner to multisig, collect sample tx hashes.
+6. **M5 — Proof of Ship.** Public GitHub ✅, live URL ✅, registered on Talent App ✅. Optional: add MiniPay hook path to Data Sources, drive first real subscribers. **All hard-gates met.**
 7. **M6 — MiniPay listing.** Once polished, submit Stage-1 intake at `minipay.to/mini-apps`.
 
 ---
@@ -459,7 +459,7 @@ From `minipay-requirements.md` — get these right before applying:
 
 **contracts/.env** — `PRIVATE_KEY`, `OWNER_ADDRESS`, `TREASURY_ADDRESS`, `ETHERSCAN_API_KEY`, `CELO_SEPOLIA_RPC`, `CELO_RPC`.
 **backend/.env** — `PORT`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_POOLER_URL` (session pooler, DDL only — direct host is IPv6-only), `OPENROUTER_API_KEY`, `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `NEWS_RSS_FEEDS`, `CELO_CHAIN`, `CELO_RPC`, `SUBSCRIPTION_CONTRACT_ADDRESS`, `EVENT_INDEXER_FROM_BLOCK`, `FRONTEND_URL`, `SUMMARY_FREE_DAILY_LIMIT`.
-**frontend/.env** — `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CHAIN` (`celo`|`celoSepolia`), `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT`, `NEXT_PUBLIC_SUPPORT_URL`.
+**frontend/.env** — `NEXT_PUBLIC_API_URL` (the Railway BE URL), `NEXT_PUBLIC_CHAIN` (`celo`|`celoSepolia`), `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT`, `NEXT_PUBLIC_CENY_CONTRACT` (`0xFacb…25d6aB` — surfaces the CENY reward/balance), `NEXT_PUBLIC_SUPPORT_URL`.
 
 ---
 

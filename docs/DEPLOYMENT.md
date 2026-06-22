@@ -2,7 +2,9 @@
 
 Complete record of the `NewsSubscription` deployment to **Celo Mainnet** (how it was done, how to
 interact with it, the admin runbook), plus the **Ceny** reward token, the **Supabase** data layer, the
-**local dev / MiniPay tunnel** setup, and the work completed so far.
+**Vercel frontend** + **Railway backend** hosting, the **local dev** setup, and the work completed so
+far. The whole stack is now hosted (FE `https://mini.celiq.io`, BE Railway); cloudflared tunnels are
+retired (local dev only).
 
 > Quick links: design → [`../README.md`](../README.md) · project status → [`STATUS.md`](STATUS.md) ·
 > machine-readable record → [`../contracts/deployments/celo-mainnet.json`](../contracts/deployments/celo-mainnet.json) ·
@@ -289,28 +291,61 @@ recreate the tables).
 
 ## 11. Frontend deploy — Vercel (LIVE)
 
-The frontend is **live on Vercel**.
+The frontend is **live on Vercel** at its custom domain.
 
 | | |
 |---|---|
-| **URL** | **`https://miniceliq.vercel.app`** |
+| **URL** | **`https://mini.celiq.io`** (custom domain live; `miniceliq.vercel.app` also still serves) |
 | **Vercel project** | `ghozzzas-projects/miniceliq` |
-| **Deploy** | `vercel --prod` from `frontend/`, with the `NEXT_PUBLIC_*` vars passed via **`--build-env`** |
-| **Build-env vars** | `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT` (lowercase — viem EIP-55 trap), `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CHAIN=celo`, `NEXT_PUBLIC_SUPPORT_URL` |
-| **API target** | currently points at the **BE cloudflared tunnel** (repoint to the VPS URL once the BE is hosted) |
-| **Custom domain** | **`mini.celiq.io`** added to the Vercel project — **pending a Namecheap A record** (`mini` → `76.76.21.21`) |
+| **Deploy** | `vercel --prod --yes --scope ghozzzas-projects --build-env …` from `frontend/`, passing **ALL** `NEXT_PUBLIC_*` vars via **`--build-env`** |
+| **Build-env vars** | `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT` (lowercase — viem EIP-55 trap), `NEXT_PUBLIC_CENY_CONTRACT=0xFacb…25d6aB` (surfaces the CENY reward/balance), `NEXT_PUBLIC_API_URL` (the **Railway** BE URL), `NEXT_PUBLIC_CHAIN=celo`, `NEXT_PUBLIC_SUPPORT_URL` |
+| **API target** | the **Railway backend** `https://miniceliq-backend-production.up.railway.app` (no longer the cloudflared tunnel) |
+| **Custom domain** | **`mini.celiq.io` — LIVE.** DNS A record (`mini` → `76.76.21.21`) is set; SSL is active. |
+| **Talent App** | domain ownership verified via a `<meta name="talentapp:project_verification" …>` tag injected through Next `metadata.other` in `app/layout.tsx` (live on `mini.celiq.io`). |
 
-> The API still resolves to an ephemeral cloudflared tunnel, so the live FE depends on the local BE
-> being up + tunneled until the backend moves to the VPS (§12 / STATUS open items).
+> The live FE no longer depends on the laptop — the API resolves to the hosted Railway backend, and
+> cloudflared tunnels are retired (local dev only, §11.2).
+
+---
+
+## 11.1 Backend deploy — Railway (LIVE)
+
+The backend is **live on Railway** (previously planned for an IDCloudHost VPS — that plan changed).
+
+| | |
+|---|---|
+| **URL** | **`https://miniceliq-backend-production.up.railway.app`** |
+| **Railway account** | `cghoza@gmail.com` |
+| **Project + service** | `miniceliq-backend` |
+| **Build (Nixpacks)** | `pnpm install` → `pnpm build` (tsc) → `pnpm start` = `node dist/server.js` |
+| **`PORT`** | **injected by Railway** (do not hardcode) |
+| **CORS** | `FRONTEND_URL=https://mini.celiq.io` |
+| **Env** | set via the **Railway CLI** (points at the live Supabase project, `EVENT_INDEXER_FROM_BLOCK=70222870`, etc.) |
+| **Health** | `/api/health` shows `supabase`, `openrouter`, `chain` all `true` |
+
+```bash
+# deploy / redeploy (run from backend/)
+railway up                                  # first deploy from backend/
+railway up --service miniceliq-backend      # redeploy
+
+# set / update an env var
+railway variables --set "KEY=VALUE" --service miniceliq-backend
+```
+
+> Env vars carry no defaults for secrets — set `SUPABASE_*`, `OPENROUTER_API_KEY`, the chain vars, and
+> `FRONTEND_URL` via `railway variables --set …` (never commit values). `PORT` is provided by Railway.
 
 ---
 
 ## 11.2 Local development & MiniPay device testing
 
-To test inside MiniPay on a real phone, both the frontend and backend must be reachable from the
-device — the phone can't hit the laptop's `localhost`, so **each gets its own
-[cloudflared](https://github.com/cloudflare/cloudflared) tunnel**. (The FE is also live on Vercel —
-see §11 — but the BE still runs locally + tunneled.)
+> **Hosted now:** the live stack is FE `https://mini.celiq.io` (Vercel) + BE Railway — the tunnels
+> below are **local dev only** and no longer part of the live path. cloudflared tunnels were retired
+> once the BE moved to Railway; they were only ever for pre-hosting MiniPay device testing.
+
+To test inside MiniPay on a real phone **during local dev**, both the frontend and backend must be
+reachable from the device — the phone can't hit the laptop's `localhost`, so **each gets its own
+[cloudflared](https://github.com/cloudflare/cloudflared) tunnel**.
 
 ```bash
 # 1. Run both services locally
@@ -363,22 +398,43 @@ cloudflared tunnel --url http://localhost:4000   # → https://<random>.trycloud
     preserved (OZ storage-layout validated). All upgrades/role grants **signed by the admin key
     `0x02EF…7E45` via a `cast wallet` keystore + `--account`** (not the deployer/gas key `0xA323…Ce49`).
     **42 forge tests pass** (V2 11 + V1 20 + Ceny 11). (§8, §9.1)
-13. **Frontend live on Vercel** — deployed `frontend/` to **`https://miniceliq.vercel.app`** (project
-    `ghozzzas-projects/miniceliq`) via `vercel --prod` with `--build-env` for the `NEXT_PUBLIC_*` vars;
-    API points at the BE cloudflared tunnel for now. Added custom domain **`mini.celiq.io`** — pending a
-    Namecheap A record (`mini` → `76.76.21.21`). (§11)
+13. **Frontend live on Vercel** — deployed `frontend/` to Vercel (project `ghozzzas-projects/miniceliq`)
+    via `vercel --prod` with `--build-env` for the `NEXT_PUBLIC_*` vars. (§11)
+14. **CENY reward surfaced in the FE** — the subscribe sheet shows "+ Earn N CENY" (read from on-chain
+    `cenyReward`) + "You hold X CENY", and the home masthead shows a "◆ X CENY" balance pill when the
+    connected user holds CENY. New `NEXT_PUBLIC_CENY_CONTRACT` env + `hooks/useCenyBalance.ts` +
+    `readCenyReward`/`readCenyBalance` in `lib/contract.ts`. (§11)
+15. **Backend live on Railway** — deployed `backend/` to **`https://miniceliq-backend-production.up.railway.app`**
+    (Railway account `cghoza@gmail.com`, project + service `miniceliq-backend`). Nixpacks build
+    (`pnpm install` → `pnpm build` → `pnpm start` = `node dist/server.js`), `PORT` injected by Railway,
+    env set via the Railway CLI, `FRONTEND_URL=https://mini.celiq.io` for CORS. `/api/health` reports
+    `supabase`/`openrouter`/`chain` all `true`. (§11.1)
+16. **Custom domain `mini.celiq.io` live** — DNS A record (`mini` → `76.76.21.21`) set, SSL active; the
+    Vercel FE now points `NEXT_PUBLIC_API_URL` at the Railway backend. **cloudflared tunnels retired**
+    (local dev only). (§11)
+17. **Registered on Talent App** — domain ownership verified via a `<meta name="talentapp:project_verification" …>`
+    tag injected through Next `metadata.other` in `app/layout.tsx` (live on `mini.celiq.io`). All four
+    Proof-of-Ship hard-gates now met.
 
 ---
 
 ## 13. Next steps / open items
 
-- [ ] **Host the backend** — BE → **IDCloudHost VPS**, then repoint the FE `NEXT_PUBLIC_API_URL` off the
-  cloudflared tunnel onto the VPS URL. (FE is already live on Vercel — §11.)
-- [ ] **Finalize `mini.celiq.io` DNS** — add the Namecheap A record (`mini` → `76.76.21.21`) so the
-  custom domain resolves to the Vercel deployment.
+> **All Proof-of-Ship hard-gates are met:** contract on Celo mainnet (NewsSubscription V2 + Ceny) ✅,
+> public GitHub repo ✅, live functional URL `https://mini.celiq.io` ✅, registered on Talent App ✅.
+> The remaining items below are **optional / hardening**.
+
+- [x] **Host the backend** — ✅ BE live on **Railway** (`miniceliq-backend-production.up.railway.app`);
+  the FE `NEXT_PUBLIC_API_URL` now points at it (cloudflared tunnel retired). (§11.1)
+- [x] **Finalize `mini.celiq.io` DNS** — ✅ A record (`mini` → `76.76.21.21`) set, SSL active; the custom
+  domain resolves to the Vercel deployment. (§11)
 - [x] **Ceny: deploy + integrate** — ✅ deployed to mainnet + upgraded the live `NewsSubscription` to V2
-  (auto-mint CENY on `subscribe`); `MINTER_ROLE` granted to the subscription proxy. (§9, §9.1)
-- [ ] **Register on Talent App** for the active Proof of Ship campaign; add the contract address + repo + live URL.
-- [ ] **Collect sample tx hashes** (a real `subscribe`) for the MiniPay intake.
-- [ ] **Migrate `DEFAULT_ADMIN_ROLE` + `UPGRADER_ROLE` to a Safe multisig** before scaling.
+  (auto-mint CENY on `subscribe`); `MINTER_ROLE` granted to the subscription proxy; reward surfaced in
+  the FE. (§9, §9.1, §11)
+- [x] **Register on Talent App** — ✅ registered; domain ownership verified via the
+  `talentapp:project_verification` meta tag on `mini.celiq.io`.
+- [ ] (optional) **Collect sample tx hashes** (a real `subscribe`) for the MiniPay intake.
+- [ ] (optional) **Migrate `DEFAULT_ADMIN_ROLE` + `UPGRADER_ROLE` to a Safe multisig** before scaling.
+- [ ] (optional) **Add monitoring** for the hosted BE/FE.
+- [ ] (optional) **MiniPay Discovery intake** once polished.
 - [ ] Tidy remaining doc refs to the removed `Configure`/`Upgrade` scripts in `contracts/README.md`.
