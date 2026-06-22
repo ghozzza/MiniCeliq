@@ -39,6 +39,11 @@ export const metadata: Metadata = {
   description:
     "Subscribe to curated stablecoin and macro news with AI summaries, paid in stablecoins inside MiniPay.",
   applicationName: APP_NAME,
+  other: {
+    // Talent App domain-ownership verification (Celo Proof of Ship).
+    "talentapp:project_verification":
+      "daea69c67444a6ebecf9b2ce7c0e5545cc8297055a3ef89780a2b3d4a2449c21d68449085afe62d135abef3b55c0c6db943d44c9bfe086e77ccad944eb9fa267",
+  },
 };
 
 // Mobile-first viewport. MiniPay target is 360×640.
