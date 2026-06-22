@@ -2,7 +2,7 @@
 
 > **Name:** MiniCeliq (the MiniPay edition). Shares branding with Celiq only — **no shared code,
 > data, auth, or runtime**.
-> **Status:** Design / pre-implementation. No app code written yet.
+> **Status:** Foundation built + security-audited + locally integration-tested; not yet deployed on-chain. Live status & resume steps: [`docs/STATUS.md`](docs/STATUS.md).
 > **Target:** Celo **Proof of Ship** (MiniPay track) + MiniPay Discovery listing.
 > **Language policy:** All docs and code comments in **English** (Proof of Ship requirement).
 
@@ -103,9 +103,11 @@ miniapps/
 │   ├── src/
 │   │   ├── NewsSubscription.sol
 │   │   └── mocks/MockERC20.sol
-│   ├── script/{Deploy.s.sol,Upgrade.s.sol,Configure.s.sol}
+│   ├── script/Deploy.s.sol               (seeds prices in the initializer)
 │   ├── test/NewsSubscription.t.sol
-│   ├── lib/ (forge-std, openzeppelin-contracts-upgradeable, openzeppelin-foundry-upgrades)
+│   ├── test/mocks/NewsSubscriptionV2.sol (test-only UUPS upgrade fixture)
+│   ├── audit/                            (pashov security review)
+│   ├── lib/ (forge-std, openzeppelin-contracts[-upgradeable], openzeppelin-foundry-upgrades)
 │   ├── foundry.toml  remappings.txt
 │   └── .env.example
 ├── backend/                 ← Express + TS (standalone, Railway)
@@ -155,10 +157,12 @@ Each of `contracts/`, `backend/`, `frontend/` is a **standalone project** with i
 ## 5. Smart contract design — `NewsSubscription` (UUPS, no custody, custom errors)
 
 **Design principles**
-- **No custody.** `subscribe()` pulls the price via `safeTransferFrom(user → treasury)` in the same tx. The contract balance is always ~0; it can never lock user funds.
+- **No custody.** `subscribe()` pulls the price via `safeTransferFrom(user → treasury)` in the same tx (effects-before-interaction / CEI). Contract balance stays ~0; it can never lock user funds.
 - **No `require`.** Every guard is `if (cond) revert CustomError(...)` (cheaper, and self-documenting). OZ v5's own internals already use custom errors.
-- **Upgradeable (UUPS).** Logic can evolve (new plans, referral codes, gifting) without migrating subscriber state. `_authorizeUpgrade` is `onlyOwner`.
-- **Multi-token, multi-plan.** Owner-curated allowlist (USDm/USDC/USDT) and per-token, per-plan prices (decimals differ: USDm 18, USDC/USDT 6).
+- **Upgradeable (UUPS).** Logic can evolve without migrating subscriber state. `_authorizeUpgrade` is `onlyRole(UPGRADER_ROLE)`.
+- **Role-based access control** (not Ownable): `DEFAULT_ADMIN_ROLE` (manage roles) · `MANAGER_ROLE` (treasury/tokens/prices/promo/pause) · `UPGRADER_ROLE` (upgrades + the V2 reinitializer). `initialize` grants all three to `admin` — delegate/revoke later (e.g. to a multisig).
+- **Multi-token, multi-plan.** Role-curated allowlist (USDm/USDC/USDT) and per-token, per-plan prices (decimals differ: USDm 18, USDC/USDT 6).
+- **Prices seeded at deploy.** `initialize(admin, treasury, promoEndsAt, InitToken[])` sets the allowlist + regular/promo prices + cutoff up front; all stay adjustable via the setters.
 - **Renewal stacks.** Renewing before expiry extends from the current expiry, not from now.
 
 ```solidity
@@ -167,27 +171,34 @@ pragma solidity ^0.8.24;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title MiniCeliq subscription registry (non-custodial, UUPS-upgradeable).
+/// @dev Abridged — full source (incl. _seedToken + setters): contracts/src/NewsSubscription.sol.
 contract NewsSubscription is
     Initializable,
-    OwnableUpgradeable,
+    AccessControlUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
     using SafeERC20 for IERC20;
 
+    bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
     // ---- Custom errors (no `require`) ----
     error ZeroAddress();
     error TokenNotAllowed(address token);
     error InvalidPlan(uint8 plan);
     error PriceNotSet(address token, uint8 plan);
+    error InvalidTreasury();
+
+    struct InitToken { address token; uint256 monthlyPrice; uint256 yearlyPrice; uint256 monthlyPromo; }
 
     // ---- Storage (append-only on upgrade; do NOT reorder/remove) ----
     address public treasury;                                   // receives all payments
@@ -213,16 +224,26 @@ contract NewsSubscription is
         _disableInitializers(); // implementation contract can never be initialized directly
     }
 
-    function initialize(address initialOwner, address treasury_) external initializer {
-        if (initialOwner == address(0) || treasury_ == address(0)) revert ZeroAddress();
-        __Ownable_init(initialOwner);
+    function initialize(address admin, address treasury_, uint64 promoEndsAt_, InitToken[] calldata initialTokens)
+        external
+        initializer
+    {
+        if (admin == address(0) || treasury_ == address(0)) revert ZeroAddress();
+        if (treasury_ == address(this)) revert InvalidTreasury();
+        __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(MANAGER_ROLE, admin);
+        _grantRole(UPGRADER_ROLE, admin);
+
         treasury = treasury_;
         planDuration[0] = 30 days;   // plan 0 = monthly
         planDuration[1] = 365 days;  // plan 1 = yearly
+        promoEndsAt = promoEndsAt_;
+        for (uint256 i; i < initialTokens.length; i++) _seedToken(initialTokens[i]); // seed allowlist + prices
     }
 
     /// @notice Subscribe / renew. Pulls `price[token][plan]` from the caller straight to the treasury.
@@ -234,14 +255,15 @@ contract NewsSubscription is
         uint256 amount = currentPrice(token, plan); // promo-aware, time-boxed
         if (amount == 0) revert PriceNotSet(token, plan);
 
-        // Non-custodial: funds never rest in this contract.
-        IERC20(token).safeTransferFrom(msg.sender, treasury, amount);
-
+        // Effects before interaction (CEI): write expiry first; a transfer revert rolls it back.
         uint64 nowTs = uint64(block.timestamp);
         uint64 current = subscriptionExpiry[msg.sender];
         uint64 base = current > nowTs ? current : nowTs; // stack on top of an active sub
         uint64 newExpiry = base + duration;
         subscriptionExpiry[msg.sender] = newExpiry;
+
+        // Interaction last. Non-custodial: funds never rest in this contract.
+        IERC20(token).safeTransferFrom(msg.sender, treasury, amount);
 
         emit Subscribed(msg.sender, plan, token, amount, newExpiry);
     }
@@ -259,83 +281,65 @@ contract NewsSubscription is
         return price[token][plan];
     }
 
-    // ---- Admin (onlyOwner) ----
-    function setTreasury(address t) external onlyOwner {
+    // ---- Admin (MANAGER_ROLE) ----
+    function setTreasury(address t) external onlyRole(MANAGER_ROLE) {
         if (t == address(0)) revert ZeroAddress();
         treasury = t;
         emit TreasuryUpdated(t);
     }
-    function setAllowedToken(address token, bool allowed_) external onlyOwner {
+    function setAllowedToken(address token, bool allowed_) external onlyRole(MANAGER_ROLE) {
         if (token == address(0)) revert ZeroAddress();
         allowedToken[token] = allowed_;
         emit TokenAllowed(token, allowed_);
     }
-    function setPrice(address token, uint8 plan, uint256 amount) external onlyOwner {
+    function setPrice(address token, uint8 plan, uint256 amount) external onlyRole(MANAGER_ROLE) {
         if (token == address(0)) revert ZeroAddress();
         if (planDuration[plan] == 0) revert InvalidPlan(plan);
         price[token][plan] = amount;
         emit PriceUpdated(token, plan, amount);
     }
-    function setPromoPrice(address token, uint8 plan, uint256 amount) external onlyOwner {
+    function setPromoPrice(address token, uint8 plan, uint256 amount) external onlyRole(MANAGER_ROLE) {
         if (token == address(0)) revert ZeroAddress();
         if (planDuration[plan] == 0) revert InvalidPlan(plan);
         promoPrice[token][plan] = amount; // 0 disables promo for this token/plan
         emit PromoPriceUpdated(token, plan, amount);
     }
-    function setPromoEndsAt(uint64 endsAt) external onlyOwner {
+    function setPromoEndsAt(uint64 endsAt) external onlyRole(MANAGER_ROLE) {
         promoEndsAt = endsAt; // promo auto-expires once block.timestamp >= endsAt
         emit PromoEndsAtUpdated(endsAt);
     }
-    function setPlanDuration(uint8 plan, uint64 duration) external onlyOwner {
+    function setPlanDuration(uint8 plan, uint64 duration) external onlyRole(MANAGER_ROLE) {
         planDuration[plan] = duration;
         emit PlanDurationUpdated(plan, duration);
     }
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
+    function pause() external onlyRole(MANAGER_ROLE) { _pause(); }
+    function unpause() external onlyRole(MANAGER_ROLE) { _unpause(); }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 }
 ```
 
 **Notes**
-- `nonReentrant` + `SafeERC20` are defense-in-depth even though tokens are an owner-curated allowlist.
+- `nonReentrant` + `SafeERC20` are defense-in-depth even though tokens are a role-curated allowlist.
 - **CIP-64 caveat** (`security-patterns.md` §2): the gas fee is debited in the same stablecoin out-of-band, so never write balance-delta invariants. We don't — we pull a fixed `amount`, so accounting is unaffected.
-- **Storage discipline:** UUPS requires append-only storage. The `__gap` reserves slots; `@openzeppelin/hardhat-upgrades` will *fail the upgrade* if a change is layout-unsafe. (A future hardening step is migrating to ERC-7201 namespaced storage.)
-- **Ownership:** start with a single owner EOA for speed; migrate ownership to a **multisig (Safe)** before/at mainnet for production. Documented in Open Decisions.
+- **Storage discipline:** UUPS requires append-only storage. The `__gap` reserves slots; the **OZ Foundry Upgrades** plugin *fails the upgrade* if a change is layout-unsafe. (A future hardening step is migrating to ERC-7201 namespaced storage.)
+- **Access migration:** deploy with an EOA admin; before mainnet, grant `DEFAULT_ADMIN_ROLE` + `UPGRADER_ROLE` to a **multisig (Safe)** and revoke them from the EOA.
 
-### Contract tooling — deploy / upgrade / verify (Foundry)
+### Deploy / verify (Foundry)
 
-```solidity
-// script/Deploy.s.sol — OpenZeppelin Foundry Upgrades
-import {Script, console} from "forge-std/Script.sol";
-import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
-import {NewsSubscription} from "../src/NewsSubscription.sol";
+`script/Deploy.s.sol` deploys the UUPS proxy and **seeds prices in the initializer**
+(`initialize(admin, treasury, promoEndsAt, InitToken[])`). Token addresses default to Celo Mainnet
+and are env-overridable for Sepolia.
 
-contract Deploy is Script {
-    function run() external {
-        vm.startBroadcast();
-        address proxy = Upgrades.deployUUPSProxy(
-            "NewsSubscription.sol",
-            abi.encodeCall(
-                NewsSubscription.initialize,
-                (vm.envAddress("OWNER_ADDRESS"), vm.envAddress("TREASURY_ADDRESS"))
-            )
-        );
-        console.log("Proxy:", proxy);
-        vm.stopBroadcast();
-    }
-}
+```bash
+forge script script/Deploy.s.sol --rpc-url $CELO_SEPOLIA_RPC --broadcast --ffi   # Sepolia first
+forge verify-contract <IMPL_ADDRESS> NewsSubscription --chain celo --watch        # then verify the proxy too
 ```
 
-```solidity
-// script/Upgrade.s.sol — validates storage layout vs the live proxy
-Upgrades.upgradeProxy(vm.envAddress("PROXY_ADDRESS"), "NewsSubscriptionV2.sol", "");
-```
-
-- **`foundry.toml`** must set `ffi = true`, `ast = true`, `build_info = true`, and remap OZ libs (the Upgrades plugin reads build-info to enforce upgrade safety).
-- **Deploy:** `forge script script/Deploy.s.sol --rpc-url $CELO_SEPOLIA_RPC --broadcast --ffi` → Celo **Sepolia** (`11142220`) first, then **Mainnet** (`42220`).
-- **Verify (Etherscan V2 unified key works for Celoscan):** `forge verify-contract <IMPL_ADDRESS> NewsSubscription --chain celo --watch`; also verify the proxy. Collect a sample tx hash per user-facing method (MiniPay requires this).
-- viem **EIP-55 checksum** trap: store the deployed address lowercase or via `cast to-check-sum-address` — a hand-recased address breaks viem everywhere.
+- `foundry.toml` sets `ffi`/`ast`/`build_info` so the OZ Foundry Upgrades plugin can enforce layout safety.
+- Sepolia (`11142220`) first, then Mainnet (`42220`). Collect a sample tx hash per user-facing method (MiniPay requires this).
+- viem **EIP-55** trap: store the deployed address lowercase or via `cast to-check-sum-address`.
+- A real upgrade adds an actual V2 in `src/` + a `script/Upgrade.s.sol`; the upgrade *path* is already proven by the fixture `test/mocks/NewsSubscriptionV2.sol`.
 
 ---
 
@@ -431,7 +435,7 @@ From `minipay-requirements.md` — get these right before applying:
 ## 10. Build plan (milestones)
 
 1. **M0 — Scaffold.** Create `contracts/`, `backend/`, `frontend/` with their own `package.json` + `.env.example`. Wire celopedia-skill references.
-2. **M1 — Contract.** Implement `NewsSubscription` (Foundry), full test suite (subscribe, renew-stacking, allowlist, price-not-set reverts, **promo active vs expired via `currentPrice`**, pause, upgrade-safety, non-custody invariant `balanceOf(contract)==0`). Deploy + verify on **Sepolia**; run `Configure.s.sol` to set tokens, regular prices, promo prices, and `promoEndsAt`.
+2. **M1 — Contract.** Implement `NewsSubscription` (Foundry), full test suite (subscribe, renew-stacking, allowlist, price-not-set reverts, **promo active vs expired via `currentPrice`**, pause, upgrade-safety, non-custody invariant `balanceOf(contract)==0`). Deploy + verify on **Sepolia** — `Deploy.s.sol` seeds tokens, regular + promo prices, and `promoEndsAt` in the initializer.
 3. **M2 — Frontend MVP.** MiniPay detect/auto-connect, feed, paywall, subscribe (approve + subscribe) on Sepolia. Validate at 360×640 on a real device via ngrok.
 4. **M3 — Backend.** RSS ingest + AI summaries + chain reads + quota gate + `/stats` indexer.
 5. **M4 — Mainnet + ship.** Deploy contract to **Celo Mainnet**, migrate owner to multisig, FE→Vercel, BE→Railway. Collect sample tx hashes.
@@ -468,9 +472,9 @@ Run a 3-layer review before mainnet (`security-patterns.md`): pashov `solidity-a
 **Defaults I'm taking (raise a flag to change):**
 
 5. **Backend data store → a new, separate Supabase project** (not Celiq's).
-6. **Ownership → single owner EOA on testnet → migrate to a Safe multisig before mainnet.**
+6. **Access control → role-based (DEFAULT_ADMIN / MANAGER / UPGRADER)**; deploy with an EOA admin, migrate DEFAULT_ADMIN + UPGRADER to a Safe multisig before mainnet.
 
-### Pricing in token-native units (set via `scripts/configure.ts`)
+### Pricing in token-native units (seeded in `initialize` via `Deploy.s.sol`)
 
 Promo cutoff `promoEndsAt = 1782864000` (2026-07-01T00:00:00Z = end of Jun 30 UTC).
 

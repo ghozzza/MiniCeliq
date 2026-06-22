@@ -24,8 +24,12 @@ git-ignored — run the pinned `forge install` commands in `contracts/README.md`
   caller straight to `treasury` (**never custodies funds**). Caller must `approve` first (no permit —
   MiniPay can't sign typed data). Effects-before-interaction (CEI).
 - `isActive(address) → bool`, `currentPrice(address token, uint8 plan) → uint256` (promo-aware, time-boxed).
-- Custom errors only (no `require`). Pausable, ReentrancyGuard, `onlyOwner` admin + `_authorizeUpgrade`.
+- Custom errors only (no `require`). Pausable + ReentrancyGuard. **Role-based access control** (not Ownable):
+  `DEFAULT_ADMIN_ROLE` manages roles, `MANAGER_ROLE` gates config, `UPGRADER_ROLE` gates upgrades + the V2 reinitializer.
+- `initialize(admin, treasury, promoEndsAt, InitToken[])` **seeds** the allowlist + regular/promo prices at deploy;
+  all stay adjustable via `setPrice` / `setPromoPrice` / `setPromoEndsAt` / `setAllowedToken`.
 - On-chain time-boxed promo: `promoPrice` + `promoEndsAt` (auto-reverts to regular price).
+- `NewsSubscriptionV2` is a **test-only upgrade fixture** in `contracts/test/mocks/` (never deployed).
 - Reviewed (pashov 12-lens + Celo layer): **0 confirmed findings**, 3 hardening items applied. See `contracts/audit/`.
 
 ## MiniPay hard rules (enforce in any FE change)
