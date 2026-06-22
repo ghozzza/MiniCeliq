@@ -3,11 +3,11 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 import {NewsSubscription} from "../src/NewsSubscription.sol";
-import {NewsSubscriptionV2} from "../src/NewsSubscriptionV2.sol";
+import {NewsSubscriptionV2} from "./mocks/NewsSubscriptionV2.sol"; // test-only upgrade fixture
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 
 /// @title NewsSubscription test suite
@@ -34,6 +34,10 @@ contract NewsSubscriptionTest is Test {
     uint8 internal constant PLAN_MONTHLY = 0;
     uint8 internal constant PLAN_YEARLY = 1;
 
+    // Roles (must match NewsSubscription)
+    bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
+    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
     // Regular prices (token-native units), per README §16
     uint256 internal constant USDM_MONTHLY = 5e18; // $5
     uint256 internal constant USDM_YEARLY = 50e18; // $50
@@ -48,22 +52,38 @@ contract NewsSubscriptionTest is Test {
         usdm = new MockERC20("USD Mento", "USDm", 18);
         usdc = new MockERC20("USD Coin", "USDC", 6);
 
+        // Prices are seeded in the initializer now (no promo by default — set per-test).
+        NewsSubscription.InitToken[] memory toks = new NewsSubscription.InitToken[](2);
+        toks[0] = NewsSubscription.InitToken({
+            token: address(usdm),
+            monthlyPrice: USDM_MONTHLY,
+            yearlyPrice: USDM_YEARLY,
+            monthlyPromo: 0
+        });
+        toks[1] = NewsSubscription.InitToken({
+            token: address(usdc),
+            monthlyPrice: USDC_MONTHLY,
+            yearlyPrice: USDC_YEARLY,
+            monthlyPromo: 0
+        });
+
         // Deploy the UUPS proxy through the OZ Upgrades plugin (validates layout).
         proxy = Upgrades.deployUUPSProxy(
             "NewsSubscription.sol",
-            abi.encodeCall(NewsSubscription.initialize, (owner, treasury))
+            abi.encodeCall(NewsSubscription.initialize, (owner, treasury, uint64(0), toks))
         );
         sub = NewsSubscription(proxy);
+    }
 
-        // Configure as owner: allowlist both tokens and set regular prices.
-        vm.startPrank(owner);
-        sub.setAllowedToken(address(usdm), true);
-        sub.setAllowedToken(address(usdc), true);
-        sub.setPrice(address(usdm), PLAN_MONTHLY, USDM_MONTHLY);
-        sub.setPrice(address(usdm), PLAN_YEARLY, USDM_YEARLY);
-        sub.setPrice(address(usdc), PLAN_MONTHLY, USDC_MONTHLY);
-        sub.setPrice(address(usdc), PLAN_YEARLY, USDC_YEARLY);
-        vm.stopPrank();
+    // ---- Initializer seeding ----
+
+    function test_Initialize_SeedsPricesAndAllowlist() public view {
+        assertTrue(sub.allowedToken(address(usdm)), "usdm allowlisted at init");
+        assertTrue(sub.allowedToken(address(usdc)), "usdc allowlisted at init");
+        assertEq(sub.price(address(usdm), PLAN_MONTHLY), USDM_MONTHLY, "usdm monthly seeded");
+        assertEq(sub.price(address(usdm), PLAN_YEARLY), USDM_YEARLY, "usdm yearly seeded");
+        assertEq(sub.price(address(usdc), PLAN_MONTHLY), USDC_MONTHLY, "usdc monthly seeded");
+        assertEq(sub.price(address(usdc), PLAN_YEARLY), USDC_YEARLY, "usdc yearly seeded");
     }
 
     // ---- Helpers ----
@@ -275,8 +295,9 @@ contract NewsSubscriptionTest is Test {
 
     // ---- onlyOwner on admin setters ----
 
-    function test_OnlyOwner_AdminSettersRevertForNonOwner() public {
-        bytes memory expected = abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice);
+    function test_NonManager_AdminSettersRevert() public {
+        bytes memory expected =
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, alice, MANAGER_ROLE);
 
         vm.startPrank(alice);
 
@@ -361,32 +382,35 @@ contract NewsSubscriptionTest is Test {
         assertTrue(v2.isActive(bob), "subscribe still works on V2");
     }
 
-    function test_Upgrade_OnlyOwnerCanUpgrade() public {
-        // A non-owner upgrade attempt must revert at _authorizeUpgrade.
-        // Deploy a V2 implementation and call upgradeToAndCall directly as a non-owner.
+    function test_Upgrade_OnlyUpgraderCanUpgrade() public {
+        // A non-upgrader upgrade attempt must revert at _authorizeUpgrade.
         NewsSubscriptionV2 v2Impl = new NewsSubscriptionV2();
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, alice, UPGRADER_ROLE)
+        );
         NewsSubscription(proxy).upgradeToAndCall(address(v2Impl), "");
     }
 
-    function test_InitializeV2_OnlyOwnerGuard() public {
+    function test_InitializeV2_OnlyUpgraderGuard() public {
         // Two-step upgrade: set the V2 implementation WITHOUT calling initializeV2
-        // (empty calldata), authorized by the owner.
+        // (empty calldata), authorized by an upgrader.
         NewsSubscriptionV2 v2Impl = new NewsSubscriptionV2();
         vm.prank(owner);
         NewsSubscription(proxy).upgradeToAndCall(address(v2Impl), "");
 
         NewsSubscriptionV2 v2 = NewsSubscriptionV2(proxy);
 
-        // A front-runner (non-owner) must NOT be able to consume the reinitializer slot.
+        // A front-runner (non-upgrader) must NOT be able to consume the reinitializer slot.
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, alice, UPGRADER_ROLE)
+        );
         v2.initializeV2();
 
-        // The owner can complete the migration; state/behaviour intact.
+        // An upgrader can complete the migration; state/behaviour intact.
         vm.prank(owner);
         v2.initializeV2();
-        assertEq(v2.version(), "v2", "owner completes V2 init");
+        assertEq(v2.version(), "v2", "upgrader completes V2 init");
     }
 }

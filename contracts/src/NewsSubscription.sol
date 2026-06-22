@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -17,16 +17,22 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 ///      - No custody: `subscribe()` uses `safeTransferFrom(user -> treasury)`. Contract balance stays ~0.
 ///      - No `require`: every guard is `if (cond) revert CustomError(...)`.
 ///      - UUPS upgradeable: logic can evolve without migrating subscriber state.
-///      - Multi-token / multi-plan: owner-curated allowlist + per-token, per-plan prices.
+///      - Multi-token / multi-plan: role-curated allowlist + per-token, per-plan prices.
 ///      - Renewal stacks: renewing before expiry extends from the current expiry, not from now.
+///      - Access control (role-based, not Ownable): DEFAULT_ADMIN_ROLE manages roles,
+///        MANAGER_ROLE tunes config, UPGRADER_ROLE authorizes upgrades.
 contract NewsSubscription is
     Initializable,
-    OwnableUpgradeable,
+    AccessControlUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
     using SafeERC20 for IERC20;
+
+    // ---- Roles (DEFAULT_ADMIN_ROLE is built in and administers the others) ----
+    bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE"); // treasury/tokens/prices/promo/pause
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE"); // UUPS upgrade authorization
 
     // ---- Custom errors (no `require`) ----
     error ZeroAddress();
@@ -34,6 +40,15 @@ contract NewsSubscription is
     error InvalidPlan(uint8 plan);
     error PriceNotSet(address token, uint8 plan);
     error InvalidTreasury(); // treasury must not be the contract itself (would lock funds)
+
+    /// @notice Initial per-token pricing seeded in the initializer. Everything stays
+    ///         adjustable afterwards via setAllowedToken / setPrice / setPromoPrice.
+    struct InitToken {
+        address token;
+        uint256 monthlyPrice; // plan 0, token-native units
+        uint256 yearlyPrice; // plan 1, token-native units
+        uint256 monthlyPromo; // plan 0 promo; 0 = none
+    }
 
     // ---- Storage (append-only on upgrade; do NOT reorder/remove) ----
     address public treasury; // receives all payments
@@ -61,20 +76,56 @@ contract NewsSubscription is
         _disableInitializers(); // implementation contract can never be initialized directly
     }
 
-    /// @notice Initialize the proxy. Sets owner, treasury, and the default monthly/yearly durations.
-    /// @param initialOwner Address that controls admin functions and upgrades.
+    /// @notice Initialize the proxy: grant roles, set treasury + default durations, and seed the
+    ///         initial token allowlist + prices + promo (all adjustable afterwards via the setters).
+    /// @param admin Address that receives DEFAULT_ADMIN_ROLE + MANAGER_ROLE + UPGRADER_ROLE
+    ///        (ideally a multisig; it can delegate/revoke roles afterwards).
     /// @param treasury_ Address that receives all subscription payments.
-    function initialize(address initialOwner, address treasury_) external initializer {
-        if (initialOwner == address(0) || treasury_ == address(0)) revert ZeroAddress();
+    /// @param promoEndsAt_ Promo cutoff (0 = no promo window yet).
+    /// @param initialTokens Stablecoins to allowlist + seed prices for at deploy time.
+    function initialize(
+        address admin,
+        address treasury_,
+        uint64 promoEndsAt_,
+        InitToken[] calldata initialTokens
+    ) external initializer {
+        if (admin == address(0) || treasury_ == address(0)) revert ZeroAddress();
         if (treasury_ == address(this)) revert InvalidTreasury();
-        __Ownable_init(initialOwner);
+        __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
+        _grantRole(DEFAULT_ADMIN_ROLE, admin); // can grant/revoke every role
+        _grantRole(MANAGER_ROLE, admin);
+        _grantRole(UPGRADER_ROLE, admin);
+
         treasury = treasury_;
         planDuration[0] = 30 days; // plan 0 = monthly
         planDuration[1] = 365 days; // plan 1 = yearly
+
+        promoEndsAt = promoEndsAt_;
+        emit PromoEndsAtUpdated(promoEndsAt_);
+
+        // Seed initial allowlist + prices. Plans 0/1 exist (durations set above).
+        for (uint256 i = 0; i < initialTokens.length; i++) {
+            _seedToken(initialTokens[i]);
+        }
+    }
+
+    /// @dev Seed one token's allowlist + prices at init. Mirrors setAllowedToken/setPrice/setPromoPrice.
+    function _seedToken(InitToken calldata t) private {
+        if (t.token == address(0)) revert ZeroAddress();
+        allowedToken[t.token] = true;
+        price[t.token][0] = t.monthlyPrice;
+        price[t.token][1] = t.yearlyPrice;
+        emit TokenAllowed(t.token, true);
+        emit PriceUpdated(t.token, 0, t.monthlyPrice);
+        emit PriceUpdated(t.token, 1, t.yearlyPrice);
+        if (t.monthlyPromo != 0) {
+            promoPrice[t.token][0] = t.monthlyPromo;
+            emit PromoPriceUpdated(t.token, 0, t.monthlyPromo);
+        }
     }
 
     /// @notice Subscribe / renew. Pulls `currentPrice(token, plan)` from the caller straight to the treasury.
@@ -120,10 +171,10 @@ contract NewsSubscription is
         return price[token][plan];
     }
 
-    // ---- Admin (onlyOwner) ----
+    // ---- Admin (MANAGER_ROLE) ----
 
     /// @notice Update the treasury that receives all payments.
-    function setTreasury(address t) external onlyOwner {
+    function setTreasury(address t) external onlyRole(MANAGER_ROLE) {
         if (t == address(0)) revert ZeroAddress();
         if (t == address(this)) revert InvalidTreasury();
         treasury = t;
@@ -131,14 +182,14 @@ contract NewsSubscription is
     }
 
     /// @notice Add or remove a stablecoin from the payment allowlist.
-    function setAllowedToken(address token, bool allowed_) external onlyOwner {
+    function setAllowedToken(address token, bool allowed_) external onlyRole(MANAGER_ROLE) {
         if (token == address(0)) revert ZeroAddress();
         allowedToken[token] = allowed_;
         emit TokenAllowed(token, allowed_);
     }
 
     /// @notice Set the regular price for a token/plan (token-native decimals).
-    function setPrice(address token, uint8 plan, uint256 amount) external onlyOwner {
+    function setPrice(address token, uint8 plan, uint256 amount) external onlyRole(MANAGER_ROLE) {
         if (token == address(0)) revert ZeroAddress();
         if (planDuration[plan] == 0) revert InvalidPlan(plan);
         price[token][plan] = amount;
@@ -146,7 +197,7 @@ contract NewsSubscription is
     }
 
     /// @notice Set the promo price for a token/plan; 0 disables the promo for that token/plan.
-    function setPromoPrice(address token, uint8 plan, uint256 amount) external onlyOwner {
+    function setPromoPrice(address token, uint8 plan, uint256 amount) external onlyRole(MANAGER_ROLE) {
         if (token == address(0)) revert ZeroAddress();
         if (planDuration[plan] == 0) revert InvalidPlan(plan);
         promoPrice[token][plan] = amount; // 0 disables promo for this token/plan
@@ -154,27 +205,27 @@ contract NewsSubscription is
     }
 
     /// @notice Set the promo cutoff. Promo auto-expires once `block.timestamp >= endsAt`.
-    function setPromoEndsAt(uint64 endsAt) external onlyOwner {
+    function setPromoEndsAt(uint64 endsAt) external onlyRole(MANAGER_ROLE) {
         promoEndsAt = endsAt; // promo auto-expires once block.timestamp >= endsAt
         emit PromoEndsAtUpdated(endsAt);
     }
 
     /// @notice Set (or change) the duration in seconds for a plan id.
-    function setPlanDuration(uint8 plan, uint64 duration) external onlyOwner {
+    function setPlanDuration(uint8 plan, uint64 duration) external onlyRole(MANAGER_ROLE) {
         planDuration[plan] = duration;
         emit PlanDurationUpdated(plan, duration);
     }
 
     /// @notice Pause `subscribe()` (emergency stop).
-    function pause() external onlyOwner {
+    function pause() external onlyRole(MANAGER_ROLE) {
         _pause();
     }
 
     /// @notice Resume `subscribe()`.
-    function unpause() external onlyOwner {
+    function unpause() external onlyRole(MANAGER_ROLE) {
         _unpause();
     }
 
-    /// @dev UUPS upgrade authorization — only the owner may upgrade the implementation.
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    /// @dev UUPS upgrade authorization — only UPGRADER_ROLE may upgrade the implementation.
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 }
