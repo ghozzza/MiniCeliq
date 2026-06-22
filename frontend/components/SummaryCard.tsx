@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { fetchSummary, type NewsItem } from "@/lib/api";
 import { copy } from "@/lib/copy";
+import { formatPublished } from "@/lib/time";
 
 interface SummaryCardProps {
   item: NewsItem;
@@ -64,8 +65,27 @@ export function SummaryCard({
         <h2 className="font-newsreader text-[20px] font-bold leading-[1.2] tracking-[-0.015em] text-ink">
           {item.title}
         </h2>
-        <p className="mt-1.5 text-[11px] uppercase tracking-[0.09em] text-ink-muted">
-          {item.source}
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] uppercase tracking-[0.09em] text-ink-muted">
+          {item.url && item.url !== "#" ? (
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ink-muted no-underline transition-colors hover:text-accent"
+            >
+              {item.source}
+            </a>
+          ) : (
+            <span>{item.source}</span>
+          )}
+          {item.publishedAt && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="font-plex-mono num normal-case tracking-normal">
+                {formatPublished(item.publishedAt)}
+              </span>
+            </>
+          )}
         </p>
 
         <div className="mt-4 min-h-20 border-t-[0.5px] border-rule pt-4 text-[15px] leading-[1.6] text-ink-2">
@@ -84,6 +104,17 @@ export function SummaryCard({
           <p className="mt-3 text-[11px] text-ink-muted">
             {copy.summary.poweredBy}
           </p>
+        )}
+
+        {item.url && item.url !== "#" && (
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-block text-[12px] font-medium uppercase tracking-[0.09em] text-accent no-underline transition-colors hover:text-ink"
+          >
+            {copy.summary.readOriginal} ↗
+          </a>
         )}
 
         <button

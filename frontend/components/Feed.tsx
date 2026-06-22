@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { fetchNews, type NewsItem } from "@/lib/api";
 import { copy } from "@/lib/copy";
+import { formatRelative } from "@/lib/time";
 
 interface FeedProps {
   onOpenSummary: (item: NewsItem) => void;
@@ -31,15 +32,24 @@ function StatRibbon({ headlines }: { headlines: number }) {
   );
 }
 
-// Editorial source · category meta line.
+// Editorial source · category · time meta line. Time is compact + relative
+// (e.g. "3h ago") in a mono face to match the editorial number styling.
 function MetaLine({ item }: { item: NewsItem }) {
   return (
-    <span className="flex items-center gap-2 text-[11px] uppercase tracking-[0.09em] text-ink-muted">
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] uppercase tracking-[0.09em] text-ink-muted">
       <span>{item.source}</span>
       {item.category && (
         <>
           <span aria-hidden>·</span>
           <span>{item.category}</span>
+        </>
+      )}
+      {item.publishedAt && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="font-plex-mono num normal-case tracking-normal">
+            {formatRelative(item.publishedAt)}
+          </span>
         </>
       )}
     </span>

@@ -11,6 +11,7 @@ create table if not exists public.news_cache (
   source       text not null,
   url          text not null,
   published_at timestamptz not null,
+  content      text,
   cached_at    timestamptz not null default now()
 );
 create index if not exists news_cache_published_at_idx on public.news_cache (published_at desc);

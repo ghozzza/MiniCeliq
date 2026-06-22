@@ -92,12 +92,6 @@ export default function RootLayout({
             >
               {copy.nav.feed}
             </Link>
-            <Link
-              href="/stats"
-              className="font-medium text-ink-2 no-underline transition-colors duration-[120ms] hover:text-accent"
-            >
-              {copy.nav.stats}
-            </Link>
             <SupportLink />
           </nav>
         </header>

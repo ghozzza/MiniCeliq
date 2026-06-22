@@ -9,6 +9,11 @@ export interface NewsItem {
   source: string;
   url: string;
   publishedAt: string; // ISO 8601
+  // Article body/snippet captured from the RSS item, trimmed (~1200 chars). Used
+  // to ground the AI summary so the model summarizes real text instead of trying
+  // to fetch the URL. Optional: not every feed provides it, and the list endpoint
+  // (`getNews`) intentionally omits it to keep payloads slim.
+  content?: string;
 }
 
 // AI summary cached per article id.

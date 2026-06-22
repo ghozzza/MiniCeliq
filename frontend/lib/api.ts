@@ -7,7 +7,6 @@
 //   GET  /api/news                      -> headline list
 //   POST /api/news/summarize            -> AI summary (free quota by address)
 //   GET  /api/subscription/:address     -> { active, expiry } (chain read, cached)
-//   GET  /api/stats                     -> analytics
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export interface NewsItem {
@@ -25,23 +24,6 @@ export interface SummaryResult {
   gated?: boolean;
   // Remaining free summaries for today, if the server reports it.
   remaining?: number;
-}
-
-export interface VolumeByToken {
-  token: string; // token contract address
-  volume: string; // summed amount, token-native units (stringified bigint)
-  count: number;
-}
-
-// Matches the backend `GET /api/stats` payload (analytics from indexed Subscribed
-// events). On-chain only for now; DAU/MAU/retention come from web analytics later.
-export interface StatsResult {
-  subscriberCount: number;
-  totalSubscriptions: number;
-  txPerDay: { date: string; count: number }[];
-  volumeByToken: VolumeByToken[];
-  // False until the indexer has data (no Supabase / contract not deployed yet).
-  available: boolean;
 }
 
 // ---- Mock fallbacks ----
@@ -72,14 +54,6 @@ const MOCK_NEWS: NewsItem[] = [
     category: "DeFi",
   },
 ];
-
-const MOCK_STATS: StatsResult = {
-  subscriberCount: 0,
-  totalSubscriptions: 0,
-  txPerDay: [],
-  volumeByToken: [],
-  available: false,
-};
 
 const MOCK_SUMMARY =
   "Sample summary: this is a placeholder until the backend is connected. The real feature condenses the article into a few neutral bullet points.";
@@ -145,9 +119,4 @@ export async function fetchSummary(
   } catch {
     return { summary: MOCK_SUMMARY };
   }
-}
-
-export async function fetchStats(): Promise<StatsResult> {
-  const data = await tryFetch<StatsResult>("/api/stats");
-  return data ?? MOCK_STATS;
 }

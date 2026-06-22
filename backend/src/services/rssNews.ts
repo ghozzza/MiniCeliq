@@ -17,15 +17,55 @@ const MAX_ITEMS = 100;
 
 interface RssCustomItem {
   mediaContent?: Array<{ $?: { url?: string } }>;
+  contentEncoded?: string;
 }
 type RssFeedItem = RssCustomItem & Parser.Item;
 
 const parser = new Parser<Record<string, never>, RssCustomItem>({
   timeout: FEED_TIMEOUT_MS,
   customFields: {
-    item: [["media:content", "mediaContent", { keepArray: true }]],
+    item: [
+      ["media:content", "mediaContent", { keepArray: true }],
+      ["content:encoded", "contentEncoded"],
+    ],
   },
 });
+
+const MAX_CONTENT_CHARS = 1200;
+
+// Strip HTML tags and collapse whitespace into a single trimmed line of plain
+// text, then cap at MAX_CONTENT_CHARS so the AI prompt stays bounded.
+function plainText(raw: string): string {
+  return raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_CONTENT_CHARS);
+}
+
+// Best-effort article body/snippet from an RSS item. Prefer the parser's clean
+// contentSnippet; else strip HTML from content / content:encoded; else summary.
+function extractContent(item: RssFeedItem): string | null {
+  const snippet = (item.contentSnippet ?? "").trim();
+  if (snippet) return plainText(snippet);
+
+  const html = item.contentEncoded ?? item.content;
+  if (html && html.trim()) {
+    const text = plainText(html);
+    if (text) return text;
+  }
+
+  const summary = ((item as { summary?: string }).summary ?? "").trim();
+  if (summary) return plainText(summary);
+
+  return null;
+}
 
 // In-memory fallback cache, used when Supabase is not configured.
 let memoryCache: NewsItem[] = [];
@@ -79,6 +119,7 @@ function mapItem(item: RssFeedItem, source: string): NewsItem | null {
     source,
     url,
     publishedAt: toIsoDate(item),
+    content: extractContent(item) ?? undefined,
   };
 }
 
@@ -162,6 +203,7 @@ export async function ingestNews(): Promise<{
     source: it.source,
     url: it.url,
     published_at: it.publishedAt,
+    content: it.content ?? null,
   }));
 
   const { error } = await db.from(CACHE_TABLE).upsert(rows, { onConflict: "id" });
@@ -217,7 +259,7 @@ export async function getArticleById(id: string): Promise<NewsItem | null> {
   if (db) {
     const { data } = await db
       .from(CACHE_TABLE)
-      .select("id, title, source, url, published_at")
+      .select("id, title, source, url, published_at, content")
       .eq("id", id)
       .maybeSingle();
     if (data) {
@@ -227,6 +269,7 @@ export async function getArticleById(id: string): Promise<NewsItem | null> {
         source: data.source as string,
         url: data.url as string,
         publishedAt: data.published_at as string,
+        content: (data.content as string | null) ?? undefined,
       };
     }
   }

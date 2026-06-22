@@ -20,9 +20,16 @@ const TIMEOUT_MS = 30_000;
 
 const SYSTEM_PROMPT =
   "You are a concise crypto + macro news editor for a mobile app. " +
-  "Summarize the article in 2-3 short sentences (max ~60 words), plain English, " +
-  "no hype, no emojis. Focus on what happened and why it matters. " +
-  "If you only have the headline, expand it into a neutral one-line context note.";
+  "Write a plain-English summary using ONLY the text you are given in the user " +
+  "message. Do not invent facts. " +
+  "Output the summary text and nothing else: no preamble, no labels, no quotes, " +
+  "no hype, no emojis, no markdown. " +
+  "Never reference a URL, link, web page, or article location. " +
+  "Never mention yourself, the model, or any limitation. " +
+  "Never write phrases like \"I don't have access\", \"based on the headline alone\", " +
+  "\"as an AI\", \"unable to\", \"cannot access\", or any meta-commentary about what " +
+  "you can or cannot do. If the input is thin, still write a confident, neutral " +
+  "summary from what is provided.";
 
 // In-memory summary cache, used when Supabase is not configured.
 const memorySummaries = new Map<string, SummaryRecord>();
@@ -114,11 +121,32 @@ async function callModel(modelId: string, prompt: string): Promise<string> {
   return result.text.trim();
 }
 
+// Build the user prompt. We deliberately never include the raw URL: handing the
+// model a link makes it try to "fetch" the page and then disclaim that it can't.
+//   - With article body text → ask for a 2-3 sentence (~60 word) summary of that
+//     text only.
+//   - With only a title → ask for a short neutral context note that expands the
+//     headline.
 function buildPrompt(article: NewsItem | null, fallbackTitle?: string): string {
-  if (article) {
-    return `Title: ${article.title}\nSource: ${article.source}\nURL: ${article.url}\n\nSummarize this article.`;
+  const title = article?.title ?? fallbackTitle ?? "(unknown)";
+  const body = article?.content?.trim();
+
+  if (body) {
+    return (
+      `Title: ${title}\n` +
+      (article?.source ? `Source: ${article.source}\n` : "") +
+      `\nArticle text:\n${body}\n\n` +
+      "Summarize the article text above in 2-3 short sentences (max ~60 words), " +
+      "plain English, no hype, no emojis. Cover what happened and why it matters."
+    );
   }
-  return `Title: ${fallbackTitle ?? "(unknown)"}\n\nSummarize this headline.`;
+
+  return (
+    `Headline: ${title}\n` +
+    (article?.source ? `Source: ${article.source}\n` : "") +
+    "\nWrite a neutral 1-2 sentence context note that expands this headline into " +
+    "plain language. Do not speculate beyond the headline."
+  );
 }
 
 // Summarize an article by id, using the cache when present. `titleHint` lets the
