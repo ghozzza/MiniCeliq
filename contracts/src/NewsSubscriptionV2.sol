@@ -23,7 +23,10 @@ import {NewsSubscription} from "./NewsSubscription.sol";
 contract NewsSubscriptionV2 is NewsSubscription {
     /// @notice One-time V2 migration hook. No new state to migrate; reserved for future use.
     /// @dev `reinitializer(2)` allows exactly one call after the V1 initializer (version 1).
-    function initializeV2() external reinitializer(2) {}
+    ///      `onlyOwner` prevents a front-runner from consuming the reinitializer slot in a
+    ///      non-atomic upgrade flow (defense-in-depth; the atomic upgradeToAndCall path is
+    ///      already owner-gated via `_authorizeUpgrade`).
+    function initializeV2() external reinitializer(2) onlyOwner {}
 
     /// @notice Identifies the implementation version. Used to confirm a successful upgrade.
     /// @return The version string "v2".

@@ -33,6 +33,7 @@ contract NewsSubscription is
     error TokenNotAllowed(address token);
     error InvalidPlan(uint8 plan);
     error PriceNotSet(address token, uint8 plan);
+    error InvalidTreasury(); // treasury must not be the contract itself (would lock funds)
 
     // ---- Storage (append-only on upgrade; do NOT reorder/remove) ----
     address public treasury; // receives all payments
@@ -65,6 +66,7 @@ contract NewsSubscription is
     /// @param treasury_ Address that receives all subscription payments.
     function initialize(address initialOwner, address treasury_) external initializer {
         if (initialOwner == address(0) || treasury_ == address(0)) revert ZeroAddress();
+        if (treasury_ == address(this)) revert InvalidTreasury();
         __Ownable_init(initialOwner);
         __Pausable_init();
         __ReentrancyGuard_init();
@@ -86,14 +88,16 @@ contract NewsSubscription is
         uint256 amount = currentPrice(token, plan); // promo-aware, time-boxed
         if (amount == 0) revert PriceNotSet(token, plan);
 
-        // Non-custodial: funds never rest in this contract.
-        IERC20(token).safeTransferFrom(msg.sender, treasury, amount);
-
+        // Effects before interaction (CEI): write the new expiry first. A revert in the
+        // transfer below rolls this back, so subscriptions are never granted unpaid.
         uint64 nowTs = uint64(block.timestamp);
         uint64 current = subscriptionExpiry[msg.sender];
         uint64 base = current > nowTs ? current : nowTs; // stack on top of an active sub
         uint64 newExpiry = base + duration;
         subscriptionExpiry[msg.sender] = newExpiry;
+
+        // Interaction last. Non-custodial: funds never rest in this contract.
+        IERC20(token).safeTransferFrom(msg.sender, treasury, amount);
 
         emit Subscribed(msg.sender, plan, token, amount, newExpiry);
     }
@@ -121,6 +125,7 @@ contract NewsSubscription is
     /// @notice Update the treasury that receives all payments.
     function setTreasury(address t) external onlyOwner {
         if (t == address(0)) revert ZeroAddress();
+        if (t == address(this)) revert InvalidTreasury();
         treasury = t;
         emit TreasuryUpdated(t);
     }

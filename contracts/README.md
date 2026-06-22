@@ -58,8 +58,16 @@ forge install OpenZeppelin/openzeppelin-foundry-upgrades@v0.4.1
 
 ```bash
 forge build          # must compile clean
-forge test -vv       # all 17 tests must pass (uses ffi for UUPS validation; needs node/npx)
+forge test -vv       # all 19 tests must pass (uses ffi for UUPS validation; needs node/npx)
 ```
+
+> If the upgrade tests fail with `Build info file ... is not from a full compilation`,
+> run `forge clean && forge build` first — the OZ Upgrades plugin needs a full build-info,
+> which an incremental `forge test` compile may not produce.
+
+A security review (pashov 12-lens + Celo layer) lives in `audit/`. 0 confirmed findings;
+three zero-cost hardening items (CEI ordering, `treasury != address(this)`, `onlyOwner` on
+`initializeV2`) were applied — see that report.
 
 > The upgrade tests use the real OpenZeppelin Foundry Upgrades plugin, which shells out
 > via `npx @openzeppelin/upgrades-core` to validate storage-layout safety. This requires

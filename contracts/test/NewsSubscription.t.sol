@@ -199,6 +199,13 @@ contract NewsSubscriptionTest is Test {
         sub.setTreasury(address(0));
     }
 
+    function test_Revert_SetTreasuryToSelf() public {
+        // treasury == the contract itself would lock funds (no withdraw) — must revert.
+        vm.prank(owner);
+        vm.expectRevert(NewsSubscription.InvalidTreasury.selector);
+        sub.setTreasury(proxy);
+    }
+
     // ---- Promo (time-boxed) ----
 
     function test_Promo_CurrentPriceReturnsPromoWhileWindowOpen() public {
@@ -361,5 +368,25 @@ contract NewsSubscriptionTest is Test {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         NewsSubscription(proxy).upgradeToAndCall(address(v2Impl), "");
+    }
+
+    function test_InitializeV2_OnlyOwnerGuard() public {
+        // Two-step upgrade: set the V2 implementation WITHOUT calling initializeV2
+        // (empty calldata), authorized by the owner.
+        NewsSubscriptionV2 v2Impl = new NewsSubscriptionV2();
+        vm.prank(owner);
+        NewsSubscription(proxy).upgradeToAndCall(address(v2Impl), "");
+
+        NewsSubscriptionV2 v2 = NewsSubscriptionV2(proxy);
+
+        // A front-runner (non-owner) must NOT be able to consume the reinitializer slot.
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        v2.initializeV2();
+
+        // The owner can complete the migration; state/behaviour intact.
+        vm.prank(owner);
+        v2.initializeV2();
+        assertEq(v2.version(), "v2", "owner completes V2 init");
     }
 }
