@@ -8,23 +8,30 @@ restart). For design rationale see [`../README.md`](../README.md); for repo rule
 
 ## 1. Snapshot — where we are
 
-**Phase: contract LIVE + verified on Celo mainnet. FE + BE run locally (cloudflared tunnels for
-device testing); not yet hosted on Vercel/VPS.**
+**Phase: contract LIVE on Celo mainnet (now V2 — auto-mints a CENY reward on subscribe), Ceny reward
+token LIVE + verified, FE LIVE on Vercel. BE still runs locally (cloudflared tunnel); VPS pending.**
 
-**Live contract (Celo mainnet, chainId 42220):** proxy `0x3988b17eb4134eB929118244Be69798b5dF69ce7`
-· impl `0xa0e3B8672f628B0146E23382845b0625A4D2F722` · deploy block `70222870` · admin/treasury
-`0x02EF49eDB08779c302770FC25dfDfa79dFB17E45` · both verified on Celoscan. Details: `contracts/deployments/celo-mainnet.json`.
+**Live `NewsSubscription` (Celo mainnet, chainId 42220):** proxy `0x3988b17eb4134eB929118244Be69798b5dF69ce7`
+(unchanged) · **V2 impl `0xadf826d6d221bc45840abd0e09f71021181476c2`** (V1 impl was
+`0xa0e3B8672f628B0146E23382845b0625A4D2F722`) · deploy block `70222870` · admin/treasury
+`0x02EF49eDB08779c302770FC25dfDfa79dFB17E45` · verified on Celoscan. Details: `contracts/deployments/celo-mainnet.json`.
+
+**Live `Ceny` (CENY) reward token:** proxy `0xFacb8Ba3daC93785689CBF0418b9Ad664a25d6aB` · impl
+`0x20952EACBd5325342c8a57E68dcEE0251aeb5e8f` · cap 1,000,000,000 CENY (18 dec) · verified. The
+`NewsSubscription` proxy holds Ceny's `MINTER_ROLE`.
 
 | Area | State |
 |------|-------|
-| Smart contract (`NewsSubscription`) | ✅ Built (Foundry, UUPS, AccessControl, non-custodial), **20 tests pass**, security-reviewed + hardened. |
-| On-chain deploy | ✅ **Celo mainnet + verified** — proxy `0x3988…69ce7` (block 70222870). PoS hard-gate ✅ |
-| Frontend | ✅ Built (Next.js + viem, MiniPay-compliant), reskinned to **Celiq editorial design** + decor/micro-motion + brand logo + animated aurora. ~284 KB gzip JS (<2 MB). Runs locally; wired to the live contract. |
-| Backend | ✅ Built (Express + TS). Live integrations: **Celo chain reads + OpenRouter AI summaries + Supabase (live, persistent)**. Smoke-tested 12/12. Runs locally; wired to the live contract. |
+| Smart contract (`NewsSubscription`) | ✅ Built (Foundry, UUPS, AccessControl, non-custodial), security-reviewed + hardened. **Upgraded to V2 (auto-mint CENY reward).** |
+| On-chain deploy | ✅ **Celo mainnet + verified** — proxy `0x3988…69ce7` (block 70222870), **V2 impl `0xadf8…76c2`**. PoS hard-gate ✅ |
+| NewsSubscription V2 (reward) | ✅ **Live.** Every `subscribe` auto-mints CENY to the subscriber — **10 CENY (plan 0 / monthly), 120 CENY (plan 1 / yearly)** — best-effort (try/catch; a mint failure never blocks the paid sub). Adjustable via `setCenyReward` / `setCenyToken` (MANAGER). V1 subscriber state + pricing/promo preserved through the upgrade. |
+| Frontend | ✅ **Live on Vercel** (`https://miniceliq.vercel.app`). Next.js + viem, MiniPay-compliant, reskinned to **Celiq editorial design** + decor/micro-motion + brand logo + animated aurora. ~284 KB gzip JS (<2 MB). Custom domain `mini.celiq.io` pending DNS. |
+| Backend | ✅ Built (Express + TS). Live integrations: **Celo chain reads + OpenRouter AI summaries + Supabase (live, persistent)**. Smoke-tested 12/12. Runs locally (cloudflared tunnel); VPS pending. |
 | Supabase (data layer) | ✅ **Live + persistent** — 4 tables, RLS enabled (service-role only), schema at `backend/supabase/schema.sql`. |
-| Ceny token (CENY) | 🟡 **Built, not deployed** — ERC-20 capped (1B) UUPS, AccessControl, **11 tests pass**. Subscribe-integration (auto-mint) planned. |
+| Ceny token (CENY) | ✅ **Live + verified on Celo mainnet** — proxy `0xFacb…d6aB`, ERC-20 capped (1B, 18 dec), UUPS, AccessControl. Auto-mint reward integrated (V2). |
+| Forge tests | ✅ **42 pass** — V2 11 + V1 20 + Ceny 11. Storage layout append-only safe (OZ-validated). |
 | Security audit | ✅ pashov 12-lens + Celo layer — **0 confirmed findings**, 3 hardening items applied (`contracts/audit/`). |
-| Live URLs (Vercel/VPS) | ⬜ Pending. **PoS hard-gate.** (FE → Vercel, BE → IDCloudHost VPS.) |
+| Live URLs | 🟡 FE ✅ on Vercel (`miniceliq.vercel.app`). BE ⬜ pending → IDCloudHost VPS. **PoS hard-gate (FE done).** |
 | Talent App registration | ⬜ Pending. **PoS hard-gate.** |
 | MiniPay Discovery intake | ⬜ Later (after live + polished). |
 
@@ -85,27 +92,37 @@ Only the monthly plan gets a promo. Token-native units to set via `script/Config
 
 ## 6. Remaining roadmap (what's left)
 
-> ✅ **Done:** contract deployed + verified on Celo mainnet · backend live (chain reads + OpenRouter
-> AI summaries + Supabase persistent) · frontend reskinned to Celiq editorial design + decor + logo +
-> aurora · Ceny token built (11 tests). Both FE + BE run locally and are exposed via cloudflared for
-> MiniPay device testing.
+> ✅ **Done:** `NewsSubscription` deployed + verified on Celo mainnet, **upgraded to V2 (auto-mint CENY
+> reward)** · **Ceny (CENY) deployed + verified** + `MINTER_ROLE` granted to the subscription proxy ·
+> **frontend live on Vercel** (`miniceliq.vercel.app`) · backend live (chain reads + OpenRouter AI
+> summaries + Supabase persistent) · frontend reskinned to Celiq editorial design + decor + logo +
+> aurora · 42 forge tests pass. BE still runs locally (cloudflared tunnel) for MiniPay device testing.
+
+> **V2 / reward note:** every `subscribe` now mints a CENY reward to the subscriber — **10 CENY**
+> (plan 0 / monthly), **120 CENY** (plan 1 / yearly). The mint is **best-effort** (try/catch — a mint
+> failure never blocks the paid subscription) and **adjustable** via `setCenyReward` / `setCenyToken`
+> (MANAGER_ROLE). All V2 upgrades + role grants are signed by the **admin key** `0x02EF…7E45` (the
+> deployer/gas key `0xA323…Ce49` in `contracts/.env` does **not** hold the roles).
 
 ### M5 — Host the app, go live
-- **Frontend (Vercel):** project `ghozzzas-projects/miniceliq` is already linked; domain `mini.celiq.io`
-  planned. Set `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT` (lowercase — viem EIP-55 trap), `NEXT_PUBLIC_API_URL`
-  (BE URL), `NEXT_PUBLIC_CHAIN`, `NEXT_PUBLIC_SUPPORT_URL`. `vercel --prod` from `frontend/`.
-- **Backend (IDCloudHost VPS, later):** deploy the Express server, point it at the live Supabase project
-  (already provisioned), set env (§7), `EVENT_INDEXER_FROM_BLOCK` = deploy block `70222870`.
+- **Frontend (Vercel):** ✅ **LIVE at `https://miniceliq.vercel.app`** (project `ghozzzas-projects/miniceliq`).
+  Deployed via CLI with `--build-env` for the `NEXT_PUBLIC_*` vars; the API currently points at the BE
+  cloudflared tunnel. Custom domain **`mini.celiq.io`** was added to the Vercel project — **pending a
+  Namecheap A record** (`mini` → `76.76.21.21`).
+- **Backend (IDCloudHost VPS, remaining):** deploy the Express server, point it at the live Supabase project
+  (already provisioned), set env (§7), `EVENT_INDEXER_FROM_BLOCK` = deploy block `70222870`. Then repoint
+  the FE `NEXT_PUBLIC_API_URL` off the tunnel onto the VPS URL.
 
-### Ceny token — deploy + integrate
-- Deploy `Ceny` (CENY) to Celo mainnet, then **integrate the reward into the subscribe flow**
-  (auto-mint Ceny on `subscribe`). This requires **upgrading the live `NewsSubscription`** (UUPS) —
-  planned, not yet done. Decision still pending on the exact integration shape.
+### Ceny token — deploy + integrate ✅ DONE
+- ✅ Deployed `Ceny` (CENY) to Celo mainnet (proxy `0xFacb…d6aB`, verified) and **integrated the reward
+  into the subscribe flow** — `NewsSubscription` was **upgraded to V2** (UUPS) so each `subscribe`
+  auto-mints CENY; the subscription proxy was granted Ceny's `MINTER_ROLE`.
 
 ### M6 — Proof of Ship submission
-- Public GitHub ✅ (done). Live app URL (Vercel) + contract on **mainnet** ✅ + register the project on
-  **Talent App** (`https://talent.app/~/earn/celo-proof-of-ship`). Add the MiniPay-hook path to the
-  project's Data Sources for activity tracking. Drive first real subscribers (on-chain fees are scored).
+- Public GitHub ✅ · live app URL ✅ (`https://miniceliq.vercel.app`) · contract on **mainnet** ✅.
+  Remaining: **register the project on Talent App** (`https://talent.app/~/earn/celo-proof-of-ship`).
+  Add the MiniPay-hook path to the project's Data Sources for activity tracking. Drive first real
+  subscribers (on-chain fees are scored).
 
 ### Later — MiniPay Discovery intake
 - Once live + polished, submit Stage-1 intake at `https://minipay.to/mini-apps`. Pre-listing checklist: `.agents/skills/celopedia-skill/references/minipay-requirements.md`.

@@ -11,8 +11,8 @@ MiniCeliq is a **MiniPay (Celo) mini app** for stablecoin news subscriptions, bu
 
 | Dir | Stack | Deploy | Build / test |
 |-----|-------|--------|--------------|
-| `contracts/` | Foundry + OpenZeppelin Upgradeable v5 (UUPS) | Celo (live on Mainnet) | `forge build` · `forge test` (`NewsSubscription` 20 + `Ceny` 11 pass) |
-| `frontend/` | Next.js 16 (App Router) + TypeScript + Tailwind + **viem** | Vercel | `pnpm install` · `pnpm build` |
+| `contracts/` | Foundry + OpenZeppelin Upgradeable v5 (UUPS) | Celo (live on Mainnet, **V2**) | `forge build` · `forge test` (**42 pass** — `NewsSubscriptionV2` 11 + `NewsSubscription` V1 20 + `Ceny` 11) |
+| `frontend/` | Next.js 16 (App Router) + TypeScript + Tailwind + **viem** | Vercel (**live: `https://miniceliq.vercel.app`**) | `pnpm install` · `pnpm build` |
 | `backend/` | Express 4 + TypeScript + viem + Supabase | IDCloudHost VPS | `pnpm install` · `pnpm build` |
 
 Each sub-project has its own `package.json` / lockfile / `.env.example`. `contracts/lib/` is
@@ -29,16 +29,26 @@ git-ignored — run the pinned `forge install` commands in `contracts/README.md`
 - `initialize(admin, treasury, promoEndsAt, InitToken[])` **seeds** the allowlist + regular/promo prices at deploy;
   all stay adjustable via `setPrice` / `setPromoPrice` / `setPromoEndsAt` / `setAllowedToken`.
 - On-chain time-boxed promo: `promoPrice` + `promoEndsAt` (auto-reverts to regular price).
-- `NewsSubscriptionV2` is a **test-only upgrade fixture** in `contracts/test/mocks/` (never deployed).
+- **Live proxy now runs V2** (`NewsSubscriptionV2`, impl `0xadf8…76c2`): each `subscribe` best-effort
+  mints a CENY reward to the subscriber (see reward-token section). V1 subscriber state + pricing/promo
+  were preserved through the upgrade (OZ storage-layout validated). `contracts/test/mocks/NewsSubscriptionV2.sol`
+  remains the earlier test-only upgrade fixture that proved the path.
 - Reviewed (pashov 12-lens + Celo layer): **0 confirmed findings**, 3 hardening items applied. See `contracts/audit/`.
+- **Admin/role key vs deployer key:** all roles (`DEFAULT_ADMIN` / `MANAGER` / `UPGRADER`) are held by
+  the admin key **`0x02EF…7E45`**, which is **different from** the deployer/gas key **`0xA323…Ce49`** in
+  `contracts/.env`. Every upgrade + role grant must be **signed by `0x02EF`** (via a `cast wallet`
+  keystore + `--account`, never a plaintext key) — the deployer key cannot authorize upgrades.
 
-## The reward token — `Ceny` (CENY)
+## The reward token — `Ceny` (CENY) — LIVE
 
 - ERC-20, **capped** (1,000,000,000 CENY, 18 decimals), **UUPS upgradeable**, **AccessControl**
   (`DEFAULT_ADMIN_ROLE` / `MINTER_ROLE` / `UPGRADER_ROLE`). Has an EIP-712 signature-claim path.
-- **11 forge tests pass. NOT deployed yet.** Planned: auto-mint Ceny on `subscribe` as a subscription
-  reward — which would require **upgrading the live `NewsSubscription`** (UUPS). Planned, not done;
-  integration shape still pending.
+- **Live + verified on Celo mainnet:** proxy `0xFacb8Ba3daC93785689CBF0418b9Ad664a25d6aB`, impl
+  `0x20952EACBd5325342c8a57E68dcEE0251aeb5e8f`, admin `0x02EF…7E45`. 11 forge tests pass.
+- **Reward integration is LIVE (V2):** the `NewsSubscription` proxy holds Ceny's `MINTER_ROLE`, and every
+  `subscribe` auto-mints **10 CENY** (plan 0 / monthly) / **120 CENY** (plan 1 / yearly) to the subscriber.
+  The mint is **best-effort** (try/catch — a mint failure never blocks the paid subscription) and
+  **adjustable** via `setCenyReward` / `setCenyToken` (MANAGER_ROLE).
 
 ## Data layer — Supabase (live)
 

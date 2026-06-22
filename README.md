@@ -2,7 +2,7 @@
 
 > **Name:** MiniCeliq (the MiniPay edition). Shares branding with Celiq only — **no shared code,
 > data, auth, or runtime**.
-> **Status:** Contract live + verified on Celo mainnet; backend + frontend running locally (cloudflared tunnels for device testing); Vercel + VPS hosting pending. Live status & resume steps: [`docs/STATUS.md`](docs/STATUS.md).
+> **Status:** Contract live on Celo mainnet (**V2 — auto-mints a CENY reward on subscribe**) + verified; **Ceny (CENY) reward token live + verified**; **frontend live on Vercel** (`https://miniceliq.vercel.app`, custom domain `mini.celiq.io` pending DNS); backend still runs locally (cloudflared tunnel) with VPS hosting pending. Live status & resume steps: [`docs/STATUS.md`](docs/STATUS.md).
 > **Target:** Celo **Proof of Ship** (MiniPay track) + MiniPay Discovery listing.
 > **Language policy:** All docs and code comments in **English** (Proof of Ship requirement).
 
@@ -150,8 +150,8 @@ Each of `contracts/`, `backend/`, `frontend/` is a **standalone project** with i
 | **Data store** | **Supabase (own, new project)** | News cache, AI-summary cache, analytics. Separate project from Celiq |
 | **News source** | Free **RSS** (CoinDesk, Cointelegraph, Decrypt) via `rss-parser` | Free, proven (same approach Celiq uses), no API quota |
 | **AI summaries** | Vercel **AI SDK** via OpenRouter | Same provider family the team already uses |
-| **Reward token** | **Ceny (CENY)** — ERC-20, capped (1B), UUPS, AccessControl | Built (11 tests); planned to auto-mint on `subscribe` (not yet deployed/integrated) |
-| **Deploy** | FE → **Vercel** (`ghozzzas-projects/miniceliq`, domain `mini.celiq.io` planned), BE → **IDCloudHost VPS**, contract → **Celo** | Manual-CLI deploy flow; contract already live on mainnet |
+| **Reward token** | **Ceny (CENY)** — ERC-20, capped (1B), UUPS, AccessControl | **Live + verified on Celo mainnet** (proxy `0xFacb…d6aB`); auto-minted on `subscribe` via NewsSubscription **V2** (10 CENY monthly / 120 CENY yearly, best-effort) |
+| **Deploy** | FE → **Vercel** (live at `https://miniceliq.vercel.app`; domain `mini.celiq.io` pending DNS), BE → **IDCloudHost VPS** (pending), contract → **Celo** | Manual-CLI deploy flow; contract live on mainnet (V2), FE live on Vercel |
 
 ---
 

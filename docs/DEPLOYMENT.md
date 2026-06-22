@@ -15,14 +15,15 @@ interact with it, the admin runbook), plus the **Ceny** reward token, the **Supa
 
 | | |
 |---|---|
-| **Contract** | `NewsSubscription` — UUPS upgradeable, non-custodial subscription registry |
-| **Proxy (use this everywhere)** | [`0x3988b17eb4134eB929118244Be69798b5dF69ce7`](https://celoscan.io/address/0x3988b17eb4134eb929118244be69798b5df69ce7) ✅ verified |
-| **Implementation** | [`0xa0e3B8672f628B0146E23382845b0625A4D2F722`](https://celoscan.io/address/0xa0e3b8672f628b0146e23382845b0625a4d2f722) ✅ verified |
+| **Contract** | `NewsSubscription` — UUPS upgradeable, non-custodial subscription registry · **now V2 (auto-mints a CENY reward on subscribe)** |
+| **Proxy (use this everywhere)** | [`0x3988b17eb4134eB929118244Be69798b5dF69ce7`](https://celoscan.io/address/0x3988b17eb4134eb929118244be69798b5df69ce7) ✅ verified (unchanged across the upgrade) |
+| **Implementation (V2, live)** | [`0xadf826d6d221bc45840abd0e09f71021181476c2`](https://celoscan.io/address/0xadf826d6d221bc45840abd0e09f71021181476c2) ✅ verified |
+| **Implementation (V1, superseded)** | `0xa0e3B8672f628B0146E23382845b0625A4D2F722` |
 | **Admin + Treasury** | `0x02EF49eDB08779c302770FC25dfDfa79dFB17E45` |
 | **Deployer (gas payer)** | `0xA3235414Ba1444Aaceb667e3161B183B67B8Ce49` |
 | **Deploy block** | `70222870` (use for `EVENT_INDEXER_FROM_BLOCK`) |
-| **Deployed** | 2026-06-22 |
-| **Implementation tx** | `0xaabccdeb35c3408af7777e46b47b1843d927656874a8e73fe960fb15c014dd90` |
+| **Deployed** | 2026-06-22 (V1) · upgraded to V2 2026-06-22 |
+| **V1 implementation tx** | `0xaabccdeb35c3408af7777e46b47b1843d927656874a8e73fe960fb15c014dd90` |
 | **Proxy tx** | `0x9a0ad72d901ce071cf11a0ba8c73fdd4dc3a0e254a8a14acdf20ac33484797ee` |
 
 > **Always reference the PROXY address.** The implementation holds the logic but no state — never
@@ -185,35 +186,78 @@ cast send $PROXY "setTreasury(address)" <NEW_TREASURY> --rpc-url $CELO_RPC --pri
 
 ---
 
-## 8. Upgrade path (UUPS)
+## 8. Upgrade path (UUPS) — V2 is LIVE
 
-The contract is upgradeable, gated by `UPGRADER_ROLE`. There is **no V2 in production** — the only V2
-is `contracts/test/mocks/NewsSubscriptionV2.sol`, a **test-only fixture** that proves the upgrade path
-(storage-layout safety + state preservation) in the test suite. When a real upgrade is needed:
+The contract is upgradeable, gated by `UPGRADER_ROLE`. **The live proxy now runs V2** (impl
+`0xadf826d6d221bc45840abd0e09f71021181476c2`), which auto-mints a CENY reward on `subscribe` — see
+§9.1 for the V2 upgrade record (new impl, reward config, MINTER grant, the keystore signing flow).
+The previous test-only fixture `contracts/test/mocks/NewsSubscriptionV2.sol` proved the upgrade path
+(storage-layout safety + state preservation) before the real V2 shipped.
+
+When a further upgrade is needed:
 1. Write the new implementation in `contracts/src/` (append-only storage; the OZ plugin validates layout).
-2. Add a `script/Upgrade.s.sol` using `Upgrades.upgradeProxy(PROXY, "NewV2.sol", initCalldata)`.
-3. Broadcast as an account holding `UPGRADER_ROLE`.
+2. Add an upgrade script using `Upgrades.upgradeProxy(PROXY, "NewVN.sol", initCalldata)` (see
+   `script/UpgradeToV2.s.sol` as the template).
+3. Broadcast **signed by the admin key** `0x02EF…7E45` (it holds `UPGRADER_ROLE` — the deployer/gas key
+   `0xA323…Ce49` does not). Use a `cast wallet` keystore + `--account` (§9.1), never a plaintext key.
 
 ---
 
-## 9. Ceny reward token — `Ceny` (CENY)
+## 9. Ceny reward token — `Ceny` (CENY) — LIVE
 
-A second contract, **built but not yet deployed**, intended as the subscription reward token.
+A second contract, **deployed + verified on Celo mainnet**, the subscription reward token.
 
 | | |
 |---|---|
 | **Contract** | `Ceny` (symbol **CENY**) — ERC-20 |
+| **Proxy (use this everywhere)** | [`0xFacb8Ba3daC93785689CBF0418b9Ad664a25d6aB`](https://celoscan.io/address/0xfacb8ba3dac93785689cbf0418b9ad664a25d6ab) ✅ verified |
+| **Implementation** | `0x20952EACBd5325342c8a57E68dcEE0251aeb5e8f` |
+| **Admin** | `0x02EF49eDB08779c302770FC25dfDfa79dFB17E45` |
 | **Supply** | **Capped at 1,000,000,000 CENY** (18 decimals) |
 | **Upgradeable** | UUPS (same pattern as `NewsSubscription`) |
 | **Access control** | `DEFAULT_ADMIN_ROLE` · `MINTER_ROLE` (mint) · `UPGRADER_ROLE` (upgrade) |
 | **Claim path** | EIP-712 signature-based claim |
+| **`MINTER_ROLE` granted to** | the `NewsSubscription` proxy `0x3988…69ce7` (so V2 can mint the subscribe reward) |
 | **Tests** | **11 forge tests pass** |
-| **Status** | 🟡 **NOT deployed.** |
+| **Status** | ✅ **Live + verified on Celo mainnet.** |
 
-**Planned subscribe-integration (decision pending):** auto-mint Ceny to the subscriber inside
-`NewsSubscription.subscribe()` as an on-chain reward. This requires **upgrading the live
-`NewsSubscription`** (UUPS) so it can call `Ceny.mint(...)` (the subscription contract would hold
-`MINTER_ROLE`). This is **planned, not done** — the exact integration shape is still being decided.
+### 9.1 NewsSubscription V2 upgrade — auto-mint CENY on subscribe
+
+The live `NewsSubscription` proxy was upgraded V1 → **V2** so each `subscribe` mints a CENY reward to
+the subscriber, on top of the existing non-custodial payment.
+
+| | |
+|---|---|
+| **Proxy (unchanged)** | `0x3988b17eb4134eB929118244Be69798b5dF69ce7` |
+| **New impl (V2)** | `0xadf826d6d221bc45840abd0e09f71021181476c2` ✅ verified |
+| **Reward** | **10 CENY** plan 0 (monthly) · **120 CENY** plan 1 (yearly), 18 dec |
+| **Reward config** | adjustable via `setCenyReward(plan, amount)` / `setCenyToken(addr)` (MANAGER_ROLE) |
+| **Mint semantics** | **best-effort** — wrapped in try/catch; a mint failure **never blocks** the paid subscription |
+| **Storage** | append-only safe (OZ-validated); V1 subscriber state + pricing/promo preserved through the upgrade |
+| **Tests** | **42 forge total** — V2 11 + V1 20 + Ceny 11 |
+
+**Wiring done at upgrade time:**
+1. Deployed Ceny (proxy `0xFacb…d6aB`) and granted its `MINTER_ROLE` to the `NewsSubscription` proxy.
+2. Upgraded the `NewsSubscription` proxy to V2 via `script/UpgradeToV2.s.sol`
+   (`Upgrades.upgradeProxy(PROXY, "NewsSubscriptionV2.sol", initCalldata)` — the OZ plugin validates
+   storage-layout safety) and set the Ceny token + per-plan reward amounts.
+
+**Signing — admin key, via a keystore (NOT a plaintext `PRIVATE_KEY`):** the V2 upgrade and every role
+grant must be signed by the **admin/role key `0x02EF…7E45`**, which is **different from** the
+deployer/gas key `0xA323…Ce49` in `contracts/.env`. The admin key was imported into a `cast wallet`
+keystore and passed with `--account`:
+
+```bash
+# one-time: import the admin key into an encrypted keystore (prompts for the private key + a password)
+cast wallet import miniceliq-admin --interactive
+
+# upgrade + role grants: sign with the keystore account, never with a CLI/plaintext key
+forge script script/UpgradeToV2.s.sol:UpgradeToV2 --rpc-url "$CELO_RPC" --account miniceliq-admin --broadcast --ffi -vvvv
+cast send $CENY "grantRole(bytes32,address)" $MINTER_ROLE $PROXY --rpc-url "$CELO_RPC" --account miniceliq-admin
+```
+
+> Day-to-day `MANAGER_ROLE` ops (price/promo, and `setCenyReward` / `setCenyToken`) are also held by
+> `0x02EF…7E45` and signed the same way.
 
 ---
 
@@ -243,11 +287,30 @@ recreate the tables).
 
 ---
 
-## 11. Local development & MiniPay device testing
+## 11. Frontend deploy — Vercel (LIVE)
 
-The app runs **fully locally** today (no Vercel/VPS yet). To test inside MiniPay on a real phone, both
-the frontend and backend must be reachable from the device — the phone can't hit the laptop's
-`localhost`, so **each gets its own [cloudflared](https://github.com/cloudflare/cloudflared) tunnel**.
+The frontend is **live on Vercel**.
+
+| | |
+|---|---|
+| **URL** | **`https://miniceliq.vercel.app`** |
+| **Vercel project** | `ghozzzas-projects/miniceliq` |
+| **Deploy** | `vercel --prod` from `frontend/`, with the `NEXT_PUBLIC_*` vars passed via **`--build-env`** |
+| **Build-env vars** | `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT` (lowercase — viem EIP-55 trap), `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CHAIN=celo`, `NEXT_PUBLIC_SUPPORT_URL` |
+| **API target** | currently points at the **BE cloudflared tunnel** (repoint to the VPS URL once the BE is hosted) |
+| **Custom domain** | **`mini.celiq.io`** added to the Vercel project — **pending a Namecheap A record** (`mini` → `76.76.21.21`) |
+
+> The API still resolves to an ephemeral cloudflared tunnel, so the live FE depends on the local BE
+> being up + tunneled until the backend moves to the VPS (§12 / STATUS open items).
+
+---
+
+## 11.2 Local development & MiniPay device testing
+
+To test inside MiniPay on a real phone, both the frontend and backend must be reachable from the
+device — the phone can't hit the laptop's `localhost`, so **each gets its own
+[cloudflared](https://github.com/cloudflare/cloudflared) tunnel**. (The FE is also live on Vercel —
+see §11 — but the BE still runs locally + tunneled.)
 
 ```bash
 # 1. Run both services locally
@@ -290,16 +353,31 @@ cloudflared tunnel --url http://localhost:4000   # → https://<random>.trycloud
    **"Copy original link"** button instead of an open-in-browser link (MiniPay's webview opens external
    links in place with no back, so external navigation was removed). Support → `mailto:ghoza60@gmail.com`.
 10. **Ceny token built** — `Ceny` (CENY): ERC-20, capped 1B, UUPS, AccessControl, EIP-712 claim path;
-    **11 forge tests pass.** Not deployed (§9).
+    **11 forge tests pass.**
+11. **Ceny deployed + verified** — `Ceny` (CENY) live on Celo mainnet (proxy `0xFacb…d6aB`, impl
+    `0x2095…b5e8f`, cap 1B / 18 dec); admin `0x02EF…7E45` (§9).
+12. **NewsSubscription V2 (auto-mint reward) live** — upgraded the live proxy V1 → V2 (new impl
+    `0xadf8…76c2`) via `script/UpgradeToV2.s.sol`; each `subscribe` now best-effort mints **10 CENY**
+    (monthly) / **120 CENY** (yearly) to the subscriber. Granted the subscription proxy Ceny's
+    `MINTER_ROLE`; set the Ceny token + per-plan reward amounts. V1 subscriber state + pricing/promo
+    preserved (OZ storage-layout validated). All upgrades/role grants **signed by the admin key
+    `0x02EF…7E45` via a `cast wallet` keystore + `--account`** (not the deployer/gas key `0xA323…Ce49`).
+    **42 forge tests pass** (V2 11 + V1 20 + Ceny 11). (§8, §9.1)
+13. **Frontend live on Vercel** — deployed `frontend/` to **`https://miniceliq.vercel.app`** (project
+    `ghozzzas-projects/miniceliq`) via `vercel --prod` with `--build-env` for the `NEXT_PUBLIC_*` vars;
+    API points at the BE cloudflared tunnel for now. Added custom domain **`mini.celiq.io`** — pending a
+    Namecheap A record (`mini` → `76.76.21.21`). (§11)
 
 ---
 
 ## 13. Next steps / open items
 
-- [ ] **Host the app** — FE → **Vercel** (project `ghozzzas-projects/miniceliq` already linked; domain
-  `mini.celiq.io` planned), BE → **IDCloudHost VPS** (later) → a live, functional URL (Proof of Ship hard-gate).
-- [ ] **Ceny: deploy + integrate** — deploy `Ceny` to mainnet, then upgrade the live `NewsSubscription`
-  (UUPS) to auto-mint Ceny on `subscribe` (decision on integration shape still pending).
+- [ ] **Host the backend** — BE → **IDCloudHost VPS**, then repoint the FE `NEXT_PUBLIC_API_URL` off the
+  cloudflared tunnel onto the VPS URL. (FE is already live on Vercel — §11.)
+- [ ] **Finalize `mini.celiq.io` DNS** — add the Namecheap A record (`mini` → `76.76.21.21`) so the
+  custom domain resolves to the Vercel deployment.
+- [x] **Ceny: deploy + integrate** — ✅ deployed to mainnet + upgraded the live `NewsSubscription` to V2
+  (auto-mint CENY on `subscribe`); `MINTER_ROLE` granted to the subscription proxy. (§9, §9.1)
 - [ ] **Register on Talent App** for the active Proof of Ship campaign; add the contract address + repo + live URL.
 - [ ] **Collect sample tx hashes** (a real `subscribe`) for the MiniPay intake.
 - [ ] **Migrate `DEFAULT_ADMIN_ROLE` + `UPGRADER_ROLE` to a Safe multisig** before scaling.
