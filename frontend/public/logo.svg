@@ -1,6 +1,6 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MiniCeliq logo placeholder">
-  <!-- Placeholder mark: distinct from MiniPay branding. Replace before launch. -->
-  <rect width="32" height="32" rx="8" fill="#059669"/>
-  <path d="M9 20.5C9 14.7 13.2 11 18 11c1.6 0 3 .4 4 1.1l-1.7 2.6c-.6-.4-1.4-.6-2.3-.6-2.7 0-4.8 2.1-4.8 5s2.1 5 4.8 5c.9 0 1.7-.2 2.3-.6L22 26.1c-1 .7-2.4 1.1-4 1.1-4.8 0-9-3.7-9-6.7z" fill="white"/>
-  <circle cx="22.5" cy="11.5" r="2" fill="#34D399"/>
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MiniCeliq logo">
+  <!-- Editorial brand mark: navy ink "C" (serif spirit) + green accent dot. Distinct from MiniPay. -->
+  <rect width="32" height="32" rx="6" fill="#0A2540"/>
+  <path d="M21.8 11.7a6.8 6.8 0 0 0-4.6-1.8c-3.9 0-7 3-7 6.7s3.1 6.7 7 6.7c1.8 0 3.4-.65 4.6-1.75" stroke="#F8F9F5" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  <circle cx="23" cy="10" r="2.4" fill="#00B27A"/>
 </svg>

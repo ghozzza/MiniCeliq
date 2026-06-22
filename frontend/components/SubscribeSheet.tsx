@@ -155,32 +155,35 @@ export function SubscribeSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end bg-black/40"
+      className="fixed inset-0 z-50 flex items-end bg-ink/40"
       role="dialog"
       aria-modal="true"
       onClick={busy ? undefined : onClose}
     >
       <div
-        className="w-full rounded-t-2xl bg-white p-5 pb-7 shadow-xl"
+        className="mx-auto w-full max-w-md rounded-t-2xl border-t-[0.5px] border-rule-strong bg-card p-5 pb-7 shadow-[0_-8px_24px_rgba(10,37,64,0.10)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-300" />
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-rule-strong" />
 
         {status === "success" ? (
           <div className="py-4 text-center">
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="font-newsreader text-[22px] font-bold leading-[1.2] tracking-[-0.015em] text-ink">
               {copy.subscribe.success}
             </h2>
             <button
               onClick={onClose}
-              className="mt-5 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white active:bg-emerald-700"
+              className="mt-5 w-full bg-ink py-3 text-[14px] font-semibold text-warm transition-colors active:bg-accent"
             >
               Done
             </button>
           </div>
         ) : (
           <>
-            <h2 className="text-lg font-semibold text-gray-900">
+            <p className="mb-1 text-[11px] uppercase tracking-[0.09em] text-accent">
+              MiniCeliq Plus
+            </p>
+            <h2 className="font-newsreader text-[22px] font-bold leading-[1.15] tracking-[-0.015em] text-ink">
               {copy.subscribe.title}
             </h2>
 
@@ -196,10 +199,10 @@ export function SubscribeSheet({
                   key={p}
                   onClick={() => setPlan(p)}
                   disabled={busy}
-                  className={`rounded-xl border px-3 py-3 text-sm font-medium transition ${
+                  className={`border-[0.5px] px-3 py-3 text-[14px] font-medium transition-colors duration-[120ms] ${
                     plan === p
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-800"
-                      : "border-gray-200 text-gray-600"
+                      ? "border-accent bg-accent-soft text-ink"
+                      : "border-rule-strong text-ink-2 hover:border-rule-strong hover:text-ink"
                   }`}
                 >
                   {label}
@@ -208,7 +211,7 @@ export function SubscribeSheet({
             </div>
 
             {/* Token selector — preferred is pre-picked; user can change */}
-            <p className="mt-4 text-xs font-medium text-gray-500">
+            <p className="mt-4 text-[11px] uppercase tracking-[0.09em] text-ink-muted">
               {copy.subscribe.payWith}
             </p>
             <div className="mt-2 grid grid-cols-3 gap-2">
@@ -217,10 +220,10 @@ export function SubscribeSheet({
                   key={s.symbol}
                   onClick={() => setToken(s)}
                   disabled={busy}
-                  className={`rounded-xl border px-2 py-2 text-sm font-medium transition ${
+                  className={`font-plex-mono num border-[0.5px] px-2 py-2 text-[14px] font-medium transition-colors duration-[120ms] ${
                     token.symbol === s.symbol
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-800"
-                      : "border-gray-200 text-gray-600"
+                      ? "border-accent bg-accent-soft text-ink"
+                      : "border-rule-strong text-ink-2 hover:text-ink"
                   }`}
                 >
                   {s.symbol}
@@ -229,46 +232,48 @@ export function SubscribeSheet({
             </div>
 
             {/* Live price */}
-            <div className="mt-5 flex items-baseline gap-2">
+            <div className="mt-5 flex items-baseline gap-2 border-t-[0.5px] border-rule pt-4">
               {isPromo && (
-                <span className="text-sm text-gray-400 line-through">
+                <span className="font-plex-mono num text-[14px] text-ink-muted line-through">
                   {regularLabel(plan)}
                 </span>
               )}
-              <span className="text-2xl font-bold text-gray-900">
+              <span className="font-plex-mono num text-[28px] font-medium leading-none tracking-[-0.01em] text-ink">
                 {humanPrice === null
                   ? copy.loading
                   : `${formatPrice(humanPrice)} ${token.symbol}`}
               </span>
               {humanPrice !== null && (
-                <span className="text-sm text-gray-500">{periodLabel}</span>
+                <span className="text-[12px] uppercase tracking-[0.09em] text-ink-muted">
+                  {periodLabel}
+                </span>
               )}
               {isPromo && (
-                <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                <span className="ml-auto bg-gold/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gold">
                   {copy.subscribe.promoBadge}
                 </span>
               )}
             </div>
 
-            <p className="mt-2 text-[11px] text-gray-400">
+            <p className="mt-2 text-[11px] text-ink-muted">
               {copy.subscribe.networkFeeNote}
             </p>
 
             {!CONTRACT_CONFIGURED && (
-              <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              <p className="mt-3 border-[0.5px] border-rule bg-warm px-3 py-2 text-[12px] text-ink-2">
                 {copy.subscribe.notConfigured}{" "}
-                <span className="text-gray-400">({activeChain.name})</span>
+                <span className="text-ink-muted">({activeChain.name})</span>
               </p>
             )}
 
             {errorMsg && (
-              <p className="mt-3 text-sm text-red-600">{errorMsg}</p>
+              <p className="mt-3 text-[14px] text-neg">{errorMsg}</p>
             )}
 
             <button
               onClick={handleSubscribe}
               disabled={busy || !CONTRACT_CONFIGURED || humanPrice === null}
-              className="mt-5 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition active:bg-emerald-700 disabled:opacity-50"
+              className="mt-5 w-full bg-ink py-3 text-[14px] font-semibold text-warm transition-colors active:bg-accent disabled:opacity-50"
             >
               {status === "approving"
                 ? copy.subscribe.stepApprove
@@ -279,7 +284,7 @@ export function SubscribeSheet({
             {!busy && (
               <button
                 onClick={onClose}
-                className="mt-2 w-full rounded-xl py-3 text-sm font-medium text-gray-500"
+                className="mt-2 w-full py-3 text-[14px] font-medium text-ink-muted"
               >
                 Cancel
               </button>

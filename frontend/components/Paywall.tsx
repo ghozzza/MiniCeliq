@@ -1,7 +1,7 @@
 "use client";
 
 // Shown when a free user runs out of daily AI summaries. Routes into SubscribeSheet.
-// No crypto jargon — copy comes from lib/copy.
+// No crypto jargon — copy comes from lib/copy. Editorial Celiq styling.
 import { copy } from "@/lib/copy";
 
 interface PaywallProps {
@@ -12,32 +12,35 @@ interface PaywallProps {
 export function Paywall({ onSubscribe, onClose }: PaywallProps) {
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end bg-black/40"
+      className="fixed inset-0 z-40 flex items-end bg-ink/40"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="w-full rounded-t-2xl bg-white p-5 pb-7 shadow-xl"
+        className="mx-auto w-full max-w-md rounded-t-2xl border-t-[0.5px] border-rule-strong bg-card p-5 pb-7 shadow-[0_-8px_24px_rgba(10,37,64,0.10)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-300" />
-        <h2 className="text-lg font-semibold text-gray-900">
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-rule-strong" />
+        <p className="mb-1 text-[11px] uppercase tracking-[0.09em] text-accent">
+          MiniCeliq Plus
+        </p>
+        <h2 className="font-newsreader text-[22px] font-bold leading-[1.15] tracking-[-0.015em] text-ink">
           {copy.paywall.title}
         </h2>
-        <p className="mt-2 text-sm leading-relaxed text-gray-600">
+        <p className="mt-2 text-[15px] leading-[1.55] text-ink-2">
           {copy.paywall.body}
         </p>
 
         <button
           onClick={onSubscribe}
-          className="mt-5 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white active:bg-emerald-700"
+          className="mt-5 w-full bg-ink py-3 text-[14px] font-semibold text-warm transition-colors active:bg-accent"
         >
           {copy.paywall.cta}
         </button>
         <button
           onClick={onClose}
-          className="mt-2 w-full rounded-xl py-3 text-sm font-medium text-gray-500"
+          className="mt-2 w-full py-3 text-[14px] font-medium text-ink-muted"
         >
           Not now
         </button>

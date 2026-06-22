@@ -3,7 +3,7 @@
 // Read-only stats page (no wallet required) — MiniPay listing requirement.
 // Surfaces on-chain metrics from the backend /api/stats endpoint (aggregated
 // from indexed Subscribed events). Usage analytics (DAU/MAU/retention) connect
-// via web analytics in a later milestone.
+// via web analytics in a later milestone. Editorial Celiq styling.
 import { useEffect, useState } from "react";
 import { fetchStats, type StatsResult } from "@/lib/api";
 
@@ -15,20 +15,28 @@ export default function StatsPage() {
   }, []);
 
   return (
-    <div className="px-4 py-6">
-      <h1 className="text-lg font-bold text-gray-900">Stats</h1>
-      <p className="mt-1 text-sm text-gray-500">
-        On-chain activity for MiniCeliq.
+    <div className="px-4 py-7">
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
+        Stats
+      </div>
+      <h1
+        className="font-newsreader mt-1 text-[28px] font-bold leading-[1.08] tracking-[-0.02em] text-ink"
+        style={{ textWrap: "balance" }}
+      >
+        On-chain activity
+      </h1>
+      <p className="mt-2 text-[14px] leading-[1.55] text-ink-2">
+        Live metrics for MiniCeliq, aggregated from on-chain subscriptions.
       </p>
 
       {stats === null ? (
-        <p className="mt-6 text-sm text-gray-400">Loading…</p>
+        <p className="mt-6 text-[14px] text-ink-muted">Loading…</p>
       ) : (
         <>
           {!stats.available && (
-            <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              No on-chain activity yet — these numbers go live once the contract is
-              deployed and the first subscriptions land.
+            <p className="mt-5 border-[0.5px] border-rule bg-warm px-3 py-2.5 text-[12px] leading-[1.5] text-ink-2">
+              No on-chain activity yet — these numbers go live once the contract
+              is deployed and the first subscriptions land.
             </p>
           )}
 
@@ -43,7 +51,9 @@ export default function StatsPage() {
 
           <Section title="Volume by stablecoin">
             {stats.volumeByToken.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-gray-400">No volume yet.</div>
+              <div className="px-3 py-3 text-[14px] text-ink-muted">
+                No volume yet.
+              </div>
             ) : (
               stats.volumeByToken.map((v) => (
                 <Stat
@@ -55,9 +65,9 @@ export default function StatsPage() {
             )}
           </Section>
 
-          <p className="mt-6 text-[11px] text-gray-400">
-            Usage analytics (DAU / MAU / retention) connect via web analytics in a
-            later milestone.
+          <p className="mt-6 text-[11px] leading-[1.5] text-ink-muted">
+            Usage analytics (DAU / MAU / retention) connect via web analytics in
+            a later milestone.
           </p>
         </>
       )}
@@ -73,11 +83,11 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-6">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+    <section className="mt-7">
+      <h2 className="border-b-[1.5px] border-ink pb-2 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-ink-2">
         {title}
       </h2>
-      <dl className="mt-2 divide-y divide-gray-100 rounded-xl border border-gray-100">
+      <dl className="border-[0.5px] border-rule-strong border-t-0 bg-card">
         {children}
       </dl>
     </section>
@@ -86,9 +96,11 @@ function Section({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between px-3 py-3">
-      <dt className="text-sm text-gray-600">{label}</dt>
-      <dd className="text-sm font-semibold text-gray-900">{value}</dd>
+    <div className="flex items-center justify-between border-b-[0.5px] border-rule px-3 py-3 last:border-b-0">
+      <dt className="text-[14px] text-ink-2">{label}</dt>
+      <dd className="font-plex-mono num text-[14px] font-medium text-ink">
+        {value}
+      </dd>
     </div>
   );
 }

@@ -1,21 +1,54 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-}
-
+/*
+ * MiniCeliq editorial design system — mirrors the Celiq app.
+ * Newsreader (serif) for headlines, IBM Plex Sans for UI/body,
+ * IBM Plex Mono for numbers/prices/addresses. Green #00B27A is the
+ * single accent; warm off-white background, navy ink, thin rules.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* Editorial palette */
+  --color-warm: #f8f9f5; /* page background */
+  --color-card: #ffffff; /* white cards */
+  --color-ink: #0a2540; /* primary ink / navy */
+  --color-ink-2: #4a5568; /* secondary text */
+  --color-ink-muted: #8a97a8; /* muted/labels */
+  --color-accent: #00b27a; /* single accent (green) */
+  --color-accent-soft: #e6f7f2; /* accent tint */
+  --color-rule: #e2e8f0; /* thin rules/dividers */
+  --color-rule-strong: #cbd5e1; /* card borders */
+  --color-gold: #f5a623; /* promo badge */
+  --color-neg: #e53e3e; /* errors / negative */
+  --color-pos: #00b27a; /* positive */
+
+  --font-newsreader: var(--font-newsreader-var), Georgia, serif;
+  --font-plex-sans: var(--font-plex-sans-var), system-ui, sans-serif;
+  --font-plex-mono: var(--font-plex-mono-var), ui-monospace, monospace;
 }
 
 html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial,
-    sans-serif;
+  background: var(--color-warm);
+  color: var(--color-ink);
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular mono for numbers/prices/addresses (editorial). Pair with font-plex-mono. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

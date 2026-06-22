@@ -27,22 +27,36 @@ export default function HomePage() {
 
   return (
     <div>
-      {/* Status strip: subscription state, never a raw 0x as the primary identifier */}
-      <div className="flex items-center justify-between bg-emerald-50 px-4 py-2 text-xs">
-        <span className="font-medium text-emerald-800">{copy.feed.title}</span>
+      {/* Masthead: edition-style section label + subscription state.
+          Never a raw 0x as the primary identifier (kept in title attr only). */}
+      <div className="border-b-[0.5px] border-rule px-4 pb-3 pt-5">
+        <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
+          {copy.feed.title}
+        </div>
+        <h1
+          className="font-newsreader mt-1 text-[26px] font-bold leading-[1.1] tracking-[-0.02em] text-ink"
+          style={{ textWrap: "balance" }}
+        >
+          Today&apos;s headlines
+        </h1>
         {address && (
-          <span className="text-emerald-700">
+          <p className="mt-2 text-[12px] text-ink-2">
             {isActive ? (
-              <>
+              <span className="font-medium text-accent">
                 {copy.subscribe.activeTitle}
-                {expiry
-                  ? ` · ${copy.subscribe.activeUntil} ${formatDate(expiry)}`
-                  : ""}
-              </>
+                {expiry ? (
+                  <span className="font-plex-mono num text-ink-muted">
+                    {" "}
+                    · {copy.subscribe.activeUntil} {formatDate(expiry)}
+                  </span>
+                ) : null}
+              </span>
             ) : (
-              <span title={shortAddress(address)}>{copy.paywall.freeNote}</span>
+              <span className="text-ink-muted" title={shortAddress(address)}>
+                {copy.paywall.freeNote}
+              </span>
             )}
-          </span>
+          </p>
         )}
       </div>
 
@@ -89,16 +103,19 @@ export default function HomePage() {
 // Fallback shown when not running inside MiniPay (never a Connect Wallet button).
 function OpenInMiniPay() {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-      <h1 className="text-lg font-semibold text-gray-900">
+    <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+      <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
+        MiniCeliq
+      </p>
+      <h1 className="font-newsreader text-[24px] font-bold leading-[1.15] tracking-[-0.015em] text-ink">
         {copy.openInMiniPay.title}
       </h1>
-      <p className="mt-2 max-w-xs text-sm text-gray-500">
+      <p className="mt-3 max-w-xs text-[15px] leading-[1.55] text-ink-2">
         {copy.openInMiniPay.body}
       </p>
       <a
         href="https://link.minipay.xyz/discover"
-        className="mt-6 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white"
+        className="mt-6 bg-ink px-6 py-3 text-[14px] font-semibold text-warm no-underline transition-colors hover:bg-accent"
       >
         {copy.openInMiniPay.cta}
       </a>

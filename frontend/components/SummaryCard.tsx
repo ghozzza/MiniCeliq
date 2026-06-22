@@ -2,6 +2,7 @@
 
 // Bottom-sheet style card that shows an AI summary for a tapped headline.
 // If the server gates the request (free quota used), the parent shows the Paywall.
+// Editorial styling: serif article title, uppercase meta, thin rules.
 import { useEffect, useState } from "react";
 import { fetchSummary, type NewsItem } from "@/lib/api";
 import { copy } from "@/lib/copy";
@@ -46,26 +47,32 @@ export function SummaryCard({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end bg-black/40"
+      className="fixed inset-0 z-40 flex items-end bg-ink/40"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="w-full rounded-t-2xl bg-white p-5 pb-7 shadow-xl"
+        className="mx-auto w-full max-w-md rounded-t-2xl border-t-[0.5px] border-rule-strong bg-card p-5 pb-7 shadow-[0_-8px_24px_rgba(10,37,64,0.10)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-300" />
-        <h2 className="text-base font-semibold leading-snug text-gray-900">
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-rule-strong" />
+
+        <p className="mb-1 text-[11px] uppercase tracking-[0.09em] text-accent">
+          {copy.summary.title}
+        </p>
+        <h2 className="font-newsreader text-[20px] font-bold leading-[1.2] tracking-[-0.015em] text-ink">
           {item.title}
         </h2>
-        <p className="mt-1 text-xs text-gray-500">{item.source}</p>
+        <p className="mt-1.5 text-[11px] uppercase tracking-[0.09em] text-ink-muted">
+          {item.source}
+        </p>
 
-        <div className="mt-4 min-h-20 text-sm leading-relaxed text-gray-800">
+        <div className="mt-4 min-h-20 border-t-[0.5px] border-rule pt-4 text-[15px] leading-[1.6] text-ink-2">
           {error ? (
-            <p className="text-red-600">{copy.summary.error}</p>
+            <p className="text-neg">{copy.summary.error}</p>
           ) : summary === null ? (
-            <p className="animate-pulse text-gray-400">
+            <p className="animate-pulse text-ink-muted">
               {copy.summary.generating}
             </p>
           ) : (
@@ -74,14 +81,14 @@ export function SummaryCard({
         </div>
 
         {summary !== null && !error && (
-          <p className="mt-3 text-[11px] text-gray-400">
+          <p className="mt-3 text-[11px] text-ink-muted">
             {copy.summary.poweredBy}
           </p>
         )}
 
         <button
           onClick={onClose}
-          className="mt-5 w-full rounded-xl bg-gray-100 py-3 text-sm font-medium text-gray-700 active:bg-gray-200"
+          className="mt-5 w-full border-[0.5px] border-rule-strong bg-warm py-3 text-[14px] font-medium text-ink-2 transition-colors active:bg-rule"
         >
           Close
         </button>
