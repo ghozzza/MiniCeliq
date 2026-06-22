@@ -11,9 +11,9 @@ MiniCeliq is a **MiniPay (Celo) mini app** for stablecoin news subscriptions, bu
 
 | Dir | Stack | Deploy | Build / test |
 |-----|-------|--------|--------------|
-| `contracts/` | Foundry + OpenZeppelin Upgradeable v5 (UUPS) | Celo (Sepolia → Mainnet) | `forge build` · `forge test` (19 pass) |
+| `contracts/` | Foundry + OpenZeppelin Upgradeable v5 (UUPS) | Celo (live on Mainnet) | `forge build` · `forge test` (`NewsSubscription` 20 + `Ceny` 11 pass) |
 | `frontend/` | Next.js 16 (App Router) + TypeScript + Tailwind + **viem** | Vercel | `pnpm install` · `pnpm build` |
-| `backend/` | Express 4 + TypeScript + viem + Supabase | Railway | `pnpm install` · `pnpm build` |
+| `backend/` | Express 4 + TypeScript + viem + Supabase | IDCloudHost VPS | `pnpm install` · `pnpm build` |
 
 Each sub-project has its own `package.json` / lockfile / `.env.example`. `contracts/lib/` is
 git-ignored — run the pinned `forge install` commands in `contracts/README.md` after clone.
@@ -32,6 +32,23 @@ git-ignored — run the pinned `forge install` commands in `contracts/README.md`
 - `NewsSubscriptionV2` is a **test-only upgrade fixture** in `contracts/test/mocks/` (never deployed).
 - Reviewed (pashov 12-lens + Celo layer): **0 confirmed findings**, 3 hardening items applied. See `contracts/audit/`.
 
+## The reward token — `Ceny` (CENY)
+
+- ERC-20, **capped** (1,000,000,000 CENY, 18 decimals), **UUPS upgradeable**, **AccessControl**
+  (`DEFAULT_ADMIN_ROLE` / `MINTER_ROLE` / `UPGRADER_ROLE`). Has an EIP-712 signature-claim path.
+- **11 forge tests pass. NOT deployed yet.** Planned: auto-mint Ceny on `subscribe` as a subscription
+  reward — which would require **upgrading the live `NewsSubscription`** (UUPS). Planned, not done;
+  integration shape still pending.
+
+## Data layer — Supabase (live)
+
+- Supabase is the backend's only data store (its own project — not Celiq's): tables `news_cache`
+  (incl. a `content` column), `news_summaries`, `summary_views`, `subscribed_events`. **RLS enabled
+  with no policies** → only the service-role key (the BE) can read/write.
+- **DDL/migrations run via the session pooler** (`SUPABASE_DB_POOLER_URL`), because the direct DB host
+  is IPv6-only. Schema committed at `backend/supabase/schema.sql`. AI summaries are content-based
+  (RSS body) and refusal-proof for thin feeds.
+
 ## MiniPay hard rules (enforce in any FE change)
 
 - **Zero-click connect** — no "Connect Wallet" button when `window.ethereum.isMiniPay === true`.
@@ -40,6 +57,10 @@ git-ignored — run the pinned `forge install` commands in `contracts/README.md`
 - **Tokens: USDm / USDC / USDT only, never CELO.** USDC/USDT `feeCurrency` uses the **adapter** address.
 - **Copy:** "Network fee", "Deposit", "Withdraw", "Stablecoin" — never gas/onramp/offramp/crypto.
 - Mobile-first, must work at **360×640**; JS bundle **< 2 MB**; images SVG/WebP.
+- **External-link gotcha:** MiniPay's webview opens external links **in place with no back button** —
+  navigating out traps the user. **Never link out of the app.** The article view shows a **"Copy original
+  link"** button instead of an open-in-browser link. (Support uses a `mailto:` which MiniPay hands off
+  cleanly.)
 
 ## Networks & tokens (mainnet)
 

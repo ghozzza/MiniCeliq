@@ -2,7 +2,7 @@
 
 > **Name:** MiniCeliq (the MiniPay edition). Shares branding with Celiq only — **no shared code,
 > data, auth, or runtime**.
-> **Status:** Foundation built + security-audited + locally integration-tested; not yet deployed on-chain. Live status & resume steps: [`docs/STATUS.md`](docs/STATUS.md).
+> **Status:** Contract live + verified on Celo mainnet; backend + frontend running locally (cloudflared tunnels for device testing); Vercel + VPS hosting pending. Live status & resume steps: [`docs/STATUS.md`](docs/STATUS.md).
 > **Target:** Celo **Proof of Ship** (MiniPay track) + MiniPay Discovery listing.
 > **Language policy:** All docs and code comments in **English** (Proof of Ship requirement).
 
@@ -123,7 +123,7 @@ miniapps/
 │   ├── .env.example
 │   └── package.json
 ├── frontend/                ← Next.js (App Router) + viem (Vercel)
-│   ├── app/{page.tsx,layout.tsx,stats/page.tsx,terms/page.tsx,privacy/page.tsx}
+│   ├── app/{page.tsx,layout.tsx,terms/page.tsx,privacy/page.tsx}   (Stats page removed)
 │   ├── components/{Feed,SummaryCard,SubscribeSheet,Paywall,SupportLink}.tsx
 │   ├── hooks/{useMiniPay,useSubscription}.ts
 │   ├── lib/{viem,stablecoins,contract,api,copy}.ts
@@ -150,7 +150,8 @@ Each of `contracts/`, `backend/`, `frontend/` is a **standalone project** with i
 | **Data store** | **Supabase (own, new project)** | News cache, AI-summary cache, analytics. Separate project from Celiq |
 | **News source** | Free **RSS** (CoinDesk, Cointelegraph, Decrypt) via `rss-parser` | Free, proven (same approach Celiq uses), no API quota |
 | **AI summaries** | Vercel **AI SDK** via OpenRouter | Same provider family the team already uses |
-| **Deploy** | FE → **Vercel**, BE → **Railway**, contract → **Celo** | Consistent with the team's existing manual-CLI deploy flow |
+| **Reward token** | **Ceny (CENY)** — ERC-20, capped (1B), UUPS, AccessControl | Built (11 tests); planned to auto-mint on `subscribe` (not yet deployed/integrated) |
+| **Deploy** | FE → **Vercel** (`ghozzzas-projects/miniceliq`, domain `mini.celiq.io` planned), BE → **IDCloudHost VPS**, contract → **Celo** | Manual-CLI deploy flow; contract already live on mainnet |
 
 ---
 
@@ -356,7 +357,17 @@ forge verify-contract <IMPL_ADDRESS> NewsSubscription --chain celo --watch      
 5. On success → `useSubscription()` re-reads `isActive(address)` → unlock.
 6. Low balance in all three tokens → redirect to **Deposit** deeplink `https://link.minipay.xyz/add_cash` (not an error).
 
-**Compliance built in:** zero-click connect, no signing, no CELO, USD-correct decimals (USDm 18 / USDC·USDT 6), `feeCurrency` adapters for USDC/USDT, MiniPay copy terms, in-app **Support** link, **Terms** + **Privacy** pages, name + logo distinct from MiniPay.
+**Design:** reskinned to **Celiq's editorial identity** — Newsreader serif + IBM Plex Sans/Mono, warm
+`#F8F9F5` / navy `#0A2540` / green `#00B27A` palette, plus decor + micro-motion (newspaper masthead with
+date + edition, live pulse dot, fade-up reveals, featured lead story with drop cap, stat ribbon, faint 'C'
+watermark, gold promo strip) over a subtle animated 'aurora' background. The **brand logo** (navy tile,
+serif C, green dot) is wired as the header logo + favicon + apple-icon.
+
+**Article view:** shows the **published time** and a **"Copy original link"** button — *not* an
+open-in-browser link. MiniPay's webview opens external links in place with no back button, so external
+navigation was removed entirely; users copy the link instead.
+
+**Compliance built in:** zero-click connect, no signing, no CELO, USD-correct decimals (USDm 18 / USDC·USDT 6), `feeCurrency` adapters for USDC/USDT, MiniPay copy terms, in-app **Support** link (`mailto:ghoza60@gmail.com`), **Terms** + **Privacy** pages, name + logo distinct from MiniPay. ~284 KB gzip JS (<2 MB).
 
 The starter page, `useMiniPay` hook, payment flow, multi-token balances, and preferred-stablecoin
 helper already exist as copy-paste templates in
@@ -438,7 +449,7 @@ From `minipay-requirements.md` — get these right before applying:
 2. **M1 — Contract.** Implement `NewsSubscription` (Foundry), full test suite (subscribe, renew-stacking, allowlist, price-not-set reverts, **promo active vs expired via `currentPrice`**, pause, upgrade-safety, non-custody invariant `balanceOf(contract)==0`). Deploy + verify on **Sepolia** — `Deploy.s.sol` seeds tokens, regular + promo prices, and `promoEndsAt` in the initializer.
 3. **M2 — Frontend MVP.** MiniPay detect/auto-connect, feed, paywall, subscribe (approve + subscribe) on Sepolia. Validate at 360×640 on a real device via ngrok.
 4. **M3 — Backend.** RSS ingest + AI summaries + chain reads + quota gate + `/stats` indexer.
-5. **M4 — Mainnet + ship.** Deploy contract to **Celo Mainnet**, migrate owner to multisig, FE→Vercel, BE→Railway. Collect sample tx hashes.
+5. **M4 — Mainnet + ship.** Deploy contract to **Celo Mainnet** (✅ done + verified), migrate owner to multisig, FE→Vercel, BE→IDCloudHost VPS. Collect sample tx hashes.
 6. **M5 — Proof of Ship.** Public GitHub, live URL, register on Talent App, add MiniPay hook path to Data Sources. Drive first real subscribers.
 7. **M6 — MiniPay listing.** Once polished, submit Stage-1 intake at `minipay.to/mini-apps`.
 
@@ -447,7 +458,7 @@ From `minipay-requirements.md` — get these right before applying:
 ## 11. Environment variables (per project)
 
 **contracts/.env** — `PRIVATE_KEY`, `OWNER_ADDRESS`, `TREASURY_ADDRESS`, `ETHERSCAN_API_KEY`, `CELO_SEPOLIA_RPC`, `CELO_RPC`.
-**backend/.env** — `PORT`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `NEWS_RSS_FEEDS`, `CELO_RPC`, `SUBSCRIPTION_CONTRACT_ADDRESS`, `FRONTEND_URL`.
+**backend/.env** — `PORT`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_POOLER_URL` (session pooler, DDL only — direct host is IPv6-only), `OPENROUTER_API_KEY`, `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `NEWS_RSS_FEEDS`, `CELO_CHAIN`, `CELO_RPC`, `SUBSCRIPTION_CONTRACT_ADDRESS`, `EVENT_INDEXER_FROM_BLOCK`, `FRONTEND_URL`, `SUMMARY_FREE_DAILY_LIMIT`.
 **frontend/.env** — `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CHAIN` (`celo`|`celoSepolia`), `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT`, `NEXT_PUBLIC_SUPPORT_URL`.
 
 ---

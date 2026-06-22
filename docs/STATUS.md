@@ -8,7 +8,8 @@ restart). For design rationale see [`../README.md`](../README.md); for repo rule
 
 ## 1. Snapshot — where we are
 
-**Phase: contract LIVE + verified on Celo mainnet. FE/BE not yet hosted.**
+**Phase: contract LIVE + verified on Celo mainnet. FE + BE run locally (cloudflared tunnels for
+device testing); not yet hosted on Vercel/VPS.**
 
 **Live contract (Celo mainnet, chainId 42220):** proxy `0x3988b17eb4134eB929118244Be69798b5dF69ce7`
 · impl `0xa0e3B8672f628B0146E23382845b0625A4D2F722` · deploy block `70222870` · admin/treasury
@@ -16,13 +17,14 @@ restart). For design rationale see [`../README.md`](../README.md); for repo rule
 
 | Area | State |
 |------|-------|
-| Smart contract | ✅ Built (Foundry, UUPS, AccessControl, non-custodial), **20 tests pass**, security-reviewed + hardened. |
+| Smart contract (`NewsSubscription`) | ✅ Built (Foundry, UUPS, AccessControl, non-custodial), **20 tests pass**, security-reviewed + hardened. |
 | On-chain deploy | ✅ **Celo mainnet + verified** — proxy `0x3988…69ce7` (block 70222870). PoS hard-gate ✅ |
-| Frontend | ✅ Built (Next.js + viem, MiniPay-compliant), `pnpm build` clean, ~289 KB gzip. Local `.env.local` wired to the live contract. |
-| Backend | ✅ Built (Express + TS), `pnpm build` clean. Local `.env` wired to the live contract (chain reads active). |
+| Frontend | ✅ Built (Next.js + viem, MiniPay-compliant), reskinned to **Celiq editorial design** + decor/micro-motion + brand logo + animated aurora. ~284 KB gzip JS (<2 MB). Runs locally; wired to the live contract. |
+| Backend | ✅ Built (Express + TS). Live integrations: **Celo chain reads + OpenRouter AI summaries + Supabase (live, persistent)**. Smoke-tested 12/12. Runs locally; wired to the live contract. |
+| Supabase (data layer) | ✅ **Live + persistent** — 4 tables, RLS enabled (service-role only), schema at `backend/supabase/schema.sql`. |
+| Ceny token (CENY) | 🟡 **Built, not deployed** — ERC-20 capped (1B) UUPS, AccessControl, **11 tests pass**. Subscribe-integration (auto-mint) planned. |
 | Security audit | ✅ pashov 12-lens + Celo layer — **0 confirmed findings**, 3 hardening items applied (`contracts/audit/`). |
-| Live URLs (Vercel/Railway) | ⬜ Pending. **PoS hard-gate.** |
-| Supabase / OpenRouter | ⬜ Pending (BE runs without them, degraded). |
+| Live URLs (Vercel/VPS) | ⬜ Pending. **PoS hard-gate.** (FE → Vercel, BE → IDCloudHost VPS.) |
 | Talent App registration | ⬜ Pending. **PoS hard-gate.** |
 | MiniPay Discovery intake | ⬜ Later (after live + polished). |
 
@@ -44,10 +46,17 @@ forge install OpenZeppelin/openzeppelin-foundry-upgrades@v0.4.1
 forge clean && forge build && forge test    # 19 pass (clean build needed for OZ upgrade validation)
 
 # Frontend
-cd ../frontend && pnpm install && pnpm dev   # http://localhost:3000 (open via ngrok in MiniPay to test)
+cd ../frontend && pnpm install && pnpm start  # http://localhost:3000
 
 # Backend
-cd ../backend && pnpm install && pnpm dev    # http://localhost:4000 (boots without secrets, degraded)
+cd ../backend && pnpm install && pnpm dev     # http://localhost:4000 (boots without secrets, degraded)
+
+# MiniPay device testing — expose both via cloudflared (the phone can't reach localhost).
+# BOTH FE and BE need their own tunnel:
+cloudflared tunnel --url http://localhost:3000   # FE → public URL
+cloudflared tunnel --url http://localhost:4000   # BE → public URL
+# Then set frontend NEXT_PUBLIC_API_URL = BE tunnel URL, and backend FRONTEND_URL (CORS) = FE tunnel URL.
+# Tunnel URLs are ephemeral — for device testing only.
 ```
 
 ## 4. Security audit summary
@@ -76,20 +85,27 @@ Only the monthly plan gets a promo. Token-native units to set via `script/Config
 
 ## 6. Remaining roadmap (what's left)
 
-### M4 — Deploy contract (needs Ghoza: funded key + RPC + Etherscan key)
-1. `cd contracts`, copy `.env.example` → `.env`, fill `PRIVATE_KEY`, `OWNER_ADDRESS`, `TREASURY_ADDRESS`, `ETHERSCAN_API_KEY`, `CELO_RPC`, `CELO_SEPOLIA_RPC`. Fund deployer with testnet CELO (https://faucet.celo.org/celo-sepolia).
-2. **Sepolia first:** `forge script script/Deploy.s.sol --rpc-url "$CELO_SEPOLIA_RPC" --broadcast --ffi -vvvv` → note the proxy address → set `PROXY_ADDRESS` in `.env`.
-3. On Sepolia, set `USDM_ADDRESS`/`USDC_ADDRESS`/`USDT_ADDRESS` in `.env` to testnet token addrs (FeeCurrencyDirectory `getCurrencies()`), then `forge script script/Configure.s.sol --rpc-url "$CELO_SEPOLIA_RPC" --broadcast --ffi`.
-4. Test end-to-end in MiniPay (ngrok the frontend, set the proxy address).
-5. **Mainnet:** same with `--rpc-url "$CELO_RPC"` (mainnet token addrs are baked in). Verify on Celoscan: `forge verify-contract <impl> NewsSubscription --chain celo --watch` (also the proxy). Collect a sample tx hash per user-facing method (MiniPay needs this).
-6. **Migrate ownership to a Safe multisig** after mainnet deploy.
+> ✅ **Done:** contract deployed + verified on Celo mainnet · backend live (chain reads + OpenRouter
+> AI summaries + Supabase persistent) · frontend reskinned to Celiq editorial design + decor + logo +
+> aurora · Ceny token built (11 tests). Both FE + BE run locally and are exposed via cloudflared for
+> MiniPay device testing.
 
-### M5 — Wire backend + frontend, go live
-- **Backend (Railway):** create a new standalone Supabase project + tables (`news_cache`, `news_summaries`, `summary_views`, `subscribed_events` — schema in `backend/README.md`). Set env (§7), `EVENT_INDEXER_FROM_BLOCK` = deploy block. `railway up` from `backend/`.
-- **Frontend (Vercel):** set `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT` (lowercase — viem EIP-55 trap), `NEXT_PUBLIC_API_URL` (Railway URL), `NEXT_PUBLIC_CHAIN`, `NEXT_PUBLIC_SUPPORT_URL`. Replace `public/logo.svg` placeholder. `vercel --prod` from `frontend/`.
+### M5 — Host the app, go live
+- **Frontend (Vercel):** project `ghozzzas-projects/miniceliq` is already linked; domain `mini.celiq.io`
+  planned. Set `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT` (lowercase — viem EIP-55 trap), `NEXT_PUBLIC_API_URL`
+  (BE URL), `NEXT_PUBLIC_CHAIN`, `NEXT_PUBLIC_SUPPORT_URL`. `vercel --prod` from `frontend/`.
+- **Backend (IDCloudHost VPS, later):** deploy the Express server, point it at the live Supabase project
+  (already provisioned), set env (§7), `EVENT_INDEXER_FROM_BLOCK` = deploy block `70222870`.
+
+### Ceny token — deploy + integrate
+- Deploy `Ceny` (CENY) to Celo mainnet, then **integrate the reward into the subscribe flow**
+  (auto-mint Ceny on `subscribe`). This requires **upgrading the live `NewsSubscription`** (UUPS) —
+  planned, not yet done. Decision still pending on the exact integration shape.
 
 ### M6 — Proof of Ship submission
-- Public GitHub ✅ (done). Live app URL (Vercel) + contract on **mainnet** + register the project on **Talent App** (`https://talent.app/~/earn/celo-proof-of-ship`). Add the MiniPay-hook path to the project's Data Sources for activity tracking. Drive first real subscribers (on-chain fees are scored).
+- Public GitHub ✅ (done). Live app URL (Vercel) + contract on **mainnet** ✅ + register the project on
+  **Talent App** (`https://talent.app/~/earn/celo-proof-of-ship`). Add the MiniPay-hook path to the
+  project's Data Sources for activity tracking. Drive first real subscribers (on-chain fees are scored).
 
 ### Later — MiniPay Discovery intake
 - Once live + polished, submit Stage-1 intake at `https://minipay.to/mini-apps`. Pre-listing checklist: `.agents/skills/celopedia-skill/references/minipay-requirements.md`.
@@ -97,7 +113,7 @@ Only the monthly plan gets a promo. Token-native units to set via `script/Config
 ## 7. Environment variables (NAMES only — never commit values)
 
 - **contracts/.env:** `PRIVATE_KEY`, `OWNER_ADDRESS`, `TREASURY_ADDRESS`, `ETHERSCAN_API_KEY`, `CELO_RPC`, `CELO_SEPOLIA_RPC`, `PROXY_ADDRESS`, (Sepolia) `USDM_ADDRESS`/`USDC_ADDRESS`/`USDT_ADDRESS`.
-- **backend/.env:** `PORT`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `NEWS_RSS_FEEDS`, `CELO_CHAIN`, `CELO_RPC`, `SUBSCRIPTION_CONTRACT_ADDRESS`, `EVENT_INDEXER_FROM_BLOCK`, `FRONTEND_URL`, `SUMMARY_FREE_DAILY_LIMIT`.
+- **backend/.env:** `PORT`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_POOLER_URL` (session pooler — used only to run DDL/migrations; the direct DB host is IPv6-only), `OPENROUTER_API_KEY`, `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `NEWS_RSS_FEEDS`, `CELO_CHAIN`, `CELO_RPC`, `SUBSCRIPTION_CONTRACT_ADDRESS`, `EVENT_INDEXER_FROM_BLOCK`, `FRONTEND_URL`, `SUMMARY_FREE_DAILY_LIMIT`.
 - **frontend/.env:** `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CHAIN`, `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT`, `NEXT_PUBLIC_SUPPORT_URL`.
 
 ## 8. Gating model (reminder)
