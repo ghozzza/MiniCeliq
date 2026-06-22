@@ -1,0 +1,33 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc = "0.8.24"
+
+# Optimizer on (production build).
+optimizer = true
+optimizer_runs = 200
+
+# Required by the OpenZeppelin Foundry Upgrades plugin: it reads the build-info
+# JSON + AST and shells out (ffi) to validate UUPS storage-layout safety.
+ffi = true
+ast = true
+build_info = true
+extra_output = ["storageLayout"]
+
+# Surface NatSpec/UUPS warnings as errors-of-interest during CI if desired.
+# (Left permissive here so `forge build` is clean.)
+fs_permissions = [{ access = "read", path = "./" }]
+
+[etherscan]
+# Etherscan V2 unified key works for Celoscan (chain 42220) and Celo Sepolia.
+celo = { key = "${ETHERSCAN_API_KEY}", chain = 42220 }
+celo_sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 11142220 }
+
+[rpc_endpoints]
+celo = "${CELO_RPC}"
+celo_sepolia = "${CELO_SEPOLIA_RPC}"
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
