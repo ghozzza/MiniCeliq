@@ -15,12 +15,15 @@ out/
 dist/
 build/
 
-# hardhat / foundry
+# foundry / solidity
 artifacts/
 cache/
 typechain-types/
 coverage/
 out/
+# Foundry deps are reinstalled via `forge install` (pinned in contracts/README) — don't commit 25MB of vendored OZ/forge-std
+contracts/lib/
+contracts/broadcast/
 
 # typescript
 *.tsbuildinfo
@@ -37,3 +40,6 @@ next-env.d.ts
 # local AI-agent skill reference (celopedia) — not part of the MiniCeliq app
 .agents/
 skills-lock.json
+
+# build-log (local brainstorm notes — never push to the public repo)
+build-log/
