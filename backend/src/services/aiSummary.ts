@@ -107,18 +107,67 @@ function isTransient(err: unknown): boolean {
   return false;
 }
 
-async function callModel(modelId: string, prompt: string): Promise<string> {
+// Single-model call: same provider, timeout, and no-retry policy as the summary
+// path, but with a caller-supplied system prompt + token budget. Shared so other
+// LLM features (e.g. the daily brief) reuse the OpenRouter provider setup without
+// duplicating the API-key logic.
+async function callModelWith(
+  modelId: string,
+  system: string,
+  prompt: string,
+  maxOutputTokens: number
+): Promise<string> {
   const p = getProvider();
   const result = await generateText({
     model: p(modelId),
-    system: SYSTEM_PROMPT,
+    system,
     prompt,
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxOutputTokens,
     temperature: 0.4,
     abortSignal: AbortSignal.timeout(TIMEOUT_MS),
     maxRetries: 0, // we own the fallback chain
   });
   return result.text.trim();
+}
+
+// Run a prompt through the primary → fallback model chain (transient errors only
+// trigger the fallback), returning the generated text plus which model produced
+// it. Reused by features that need their own system prompt / token budget but the
+// same provider + resilience as `summarizeArticle`. Throws AppError(503) when
+// OpenRouter is unconfigured, AppError(502) on a non-transient or exhausted chain.
+export async function generateLLM(
+  system: string,
+  prompt: string,
+  maxOutputTokens: number
+): Promise<{ text: string; model: string }> {
+  if (!hasOpenRouter()) {
+    throw new AppError("AI not configured (OPENROUTER_API_KEY)", 503);
+  }
+
+  const primary = env.LLM_PRIMARY_MODEL;
+  const fallback = env.LLM_FALLBACK_MODEL;
+
+  try {
+    return { text: await callModelWith(primary, system, prompt, maxOutputTokens), model: primary };
+  } catch (err) {
+    if (!isTransient(err) || fallback === primary) {
+      throw new AppError(
+        `LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
+        502
+      );
+    }
+    console.warn(`[AI] primary ${primary} failed, falling back to ${fallback}`);
+    try {
+      return { text: await callModelWith(fallback, system, prompt, maxOutputTokens), model: fallback };
+    } catch (fallbackErr) {
+      throw new AppError(
+        `LLM call failed (primary + fallback): ${
+          fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+        }`,
+        502
+      );
+    }
+  }
 }
 
 // Build the user prompt. We deliberately never include the raw URL: handing the
@@ -170,39 +219,12 @@ export async function summarizeArticle(
   const article = await getArticleById(articleId);
   const prompt = buildPrompt(article, titleHint);
 
-  const primary = env.LLM_PRIMARY_MODEL;
-  const fallback = env.LLM_FALLBACK_MODEL;
-
-  let text: string;
-  let usedModel: string;
-  try {
-    text = await callModel(primary, prompt);
-    usedModel = primary;
-  } catch (err) {
-    if (!isTransient(err) || fallback === primary) {
-      throw new AppError(
-        `LLM summary failed: ${err instanceof Error ? err.message : String(err)}`,
-        502
-      );
-    }
-    console.warn(`[AI] primary ${primary} failed, falling back to ${fallback}`);
-    try {
-      text = await callModel(fallback, prompt);
-      usedModel = fallback;
-    } catch (fallbackErr) {
-      throw new AppError(
-        `LLM summary failed (primary + fallback): ${
-          fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
-        }`,
-        502
-      );
-    }
-  }
+  const { text, model } = await generateLLM(SYSTEM_PROMPT, prompt, MAX_OUTPUT_TOKENS);
 
   const record: SummaryRecord = {
     articleId,
     summary: text,
-    model: usedModel,
+    model,
     createdAt: new Date().toISOString(),
   };
   await writeCachedSummary(record);

@@ -7,6 +7,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useCenyBalance } from "@/hooks/useCenyBalance";
 import { Feed } from "@/components/Feed";
 import { Masthead } from "@/components/Masthead";
+import { BriefCard } from "@/components/BriefCard";
 import { SummaryCard } from "@/components/SummaryCard";
 import { Paywall } from "@/components/Paywall";
 import { SubscribeSheet } from "@/components/SubscribeSheet";
@@ -76,6 +77,14 @@ export default function HomePage() {
           </p>
         )}
       </div>
+
+      {/* Morning Brief — once-daily AI digest, a perk for subscribers. The card
+          re-fetches when `isActive` flips, so it unlocks right after a subscribe. */}
+      <BriefCard
+        address={address}
+        isActive={isActive}
+        onSubscribe={() => setShowSubscribe(true)}
+      />
 
       <Feed onOpenSummary={(item) => setOpenItem(item)} />
 

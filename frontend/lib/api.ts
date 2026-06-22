@@ -26,6 +26,17 @@ export interface SummaryResult {
   remaining?: number;
 }
 
+// Morning Brief: a once-daily AI digest, gated to on-chain subscribers.
+//   - locked = true  → not a subscriber; `brief` is absent (show the locked card).
+//   - locked = false → subscriber; `brief`/`day`/`generatedAt` present (or `brief`
+//     absent if the server couldn't produce one today → card hides).
+export interface BriefResult {
+  locked: boolean;
+  brief?: string;
+  day?: string;
+  generatedAt?: string;
+}
+
 // ---- Mock fallbacks ----
 
 const MOCK_NEWS: NewsItem[] = [
@@ -119,4 +130,15 @@ export async function fetchSummary(
   } catch {
     return { summary: MOCK_SUMMARY };
   }
+}
+
+// Fetch today's Morning Brief. Returns null on any failure (no API configured,
+// network error, bad response) so the card hides instead of erroring. The address
+// param is omitted when null — the server then reports the brief as locked.
+export async function fetchBrief(
+  address: string | null,
+): Promise<BriefResult | null> {
+  if (!API_URL) return null;
+  const qs = address ? `?address=${encodeURIComponent(address)}` : "";
+  return tryFetch<BriefResult>(`/api/news/brief${qs}`);
 }

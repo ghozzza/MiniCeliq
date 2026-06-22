@@ -52,8 +52,18 @@ create table if not exists public.subscribed_events (
 create index if not exists subscribed_events_block_idx on public.subscribed_events (block_number desc);
 create index if not exists subscribed_events_user_idx on public.subscribed_events (user_address);
 
+-- 5) daily_brief — once-daily AI "Morning Brief" digest (GET /api/news/brief, subscribers only).
+--    One row per UTC day. Upsert on brief_day.
+create table if not exists public.daily_brief (
+  brief_day    date primary key,
+  brief        text not null,
+  model        text,
+  generated_at timestamptz not null default now()
+);
+
 -- RLS: enable on all tables, add NO policies → only the service-role key (the backend) can touch them.
 alter table public.news_cache        enable row level security;
 alter table public.news_summaries    enable row level security;
 alter table public.summary_views     enable row level security;
 alter table public.subscribed_events enable row level security;
+alter table public.daily_brief       enable row level security;
