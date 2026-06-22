@@ -3,20 +3,22 @@
   "chainId": 42220,
   "deployedAt": "2026-06-22",
   "contract": "NewsSubscription (UUPS proxy)",
+  "version": "V2 — auto-mints a CENY reward on subscribe (best-effort)",
   "proxy": "0x3988b17eb4134eB929118244Be69798b5dF69ce7",
-  "implementation": "0xa0e3B8672f628B0146E23382845b0625A4D2F722",
+  "implementation": "0xadf826d6d221bc45840abd0e09f71021181476c2",
+  "implementationV1": "0xa0e3B8672f628B0146E23382845b0625A4D2F722",
   "admin": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
   "treasury": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
   "deployer": "0xA3235414Ba1444Aaceb667e3161B183B67B8Ce49",
   "deployBlock": 70222870,
   "verified": true,
   "txHashes": {
-    "implementation": "0xaabccdeb35c3408af7777e46b47b1843d927656874a8e73fe960fb15c014dd90",
+    "implementationV1": "0xaabccdeb35c3408af7777e46b47b1843d927656874a8e73fe960fb15c014dd90",
     "proxy": "0x9a0ad72d901ce071cf11a0ba8c73fdd4dc3a0e254a8a14acdf20ac33484797ee"
   },
   "explorer": {
     "proxy": "https://celoscan.io/address/0x3988b17eb4134eb929118244be69798b5df69ce7",
-    "implementation": "https://celoscan.io/address/0xa0e3b8672f628b0146e23382845b0625a4d2f722"
+    "implementation": "https://celoscan.io/address/0xadf826d6d221bc45840abd0e09f71021181476c2"
   },
   "roles": {
     "DEFAULT_ADMIN_ROLE": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
@@ -30,5 +32,24 @@
     "promoEndsAt": 1782864000,
     "promoEndsAtISO": "2026-07-01T00:00:00Z",
     "tokens": ["USDm", "USDC", "USDT"]
+  },
+  "ceny": {
+    "contract": "Ceny (CENY) — ERC-20 capped, UUPS reward token",
+    "proxy": "0xFacb8Ba3daC93785689CBF0418b9Ad664a25d6aB",
+    "implementation": "0x20952EACBd5325342c8a57E68dcEE0251aeb5e8f",
+    "admin": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
+    "cap": "1000000000000000000000000000",
+    "capCeny": 1000000000,
+    "decimals": 18,
+    "verified": true,
+    "minterGrantedTo": "0x3988b17eb4134eB929118244Be69798b5dF69ce7",
+    "explorer": "https://celoscan.io/address/0xfacb8ba3dac93785689cbf0418b9ad664a25d6ab"
+  },
+  "rewards": {
+    "description": "CENY minted to the subscriber on each subscribe (plan => CENY, 18 dec); adjustable via setCenyReward (MANAGER_ROLE)",
+    "monthlyPlan0": "10000000000000000000",
+    "yearlyPlan1": "120000000000000000000",
+    "monthlyCeny": 10,
+    "yearlyCeny": 120
   }
 }
