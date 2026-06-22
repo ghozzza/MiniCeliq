@@ -28,16 +28,9 @@ export function SummaryCard({
 
   const hasUrl = Boolean(item.url && item.url !== "#");
 
-  // Open the original in a NEW context (overlay / system browser) instead of
-  // navigating the mini-app webview in place — otherwise MiniPay replaces MiniCeliq
-  // and there's no way back. window.open also degrades to MiniPay's in-app browser
-  // (which has its own close), never destroying the app underneath.
-  function openOriginal() {
-    if (hasUrl) window.open(item.url, "_blank", "noopener,noreferrer");
-  }
-
-  // Guaranteed no-trap fallback: copy the link so the user can open it in their
-  // own browser later, without leaving MiniCeliq.
+  // No "open in browser": MiniPay's webview opens external links IN PLACE (replacing
+  // the mini app, with no way back), so we never navigate out. Copying the link lets
+  // the user open the original in their own browser later, without leaving MiniCeliq.
   async function copyLink() {
     if (!hasUrl) return;
     try {
@@ -120,20 +113,12 @@ export function SummaryCard({
         )}
 
         {hasUrl && (
-          <div className="mt-4 flex items-center gap-5 text-[12px] font-medium uppercase tracking-[0.09em]">
-            <button
-              onClick={openOriginal}
-              className="text-accent transition-colors active:text-ink"
-            >
-              {copy.summary.readOriginal} ↗
-            </button>
-            <button
-              onClick={copyLink}
-              className="text-ink-muted transition-colors active:text-ink"
-            >
-              {copied ? "Link copied ✓" : "Copy link"}
-            </button>
-          </div>
+          <button
+            onClick={copyLink}
+            className="mt-4 inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
+          >
+            {copied ? "Original link copied ✓" : "Copy original link"}
+          </button>
         )}
 
         <button
