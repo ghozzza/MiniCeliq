@@ -99,15 +99,15 @@ These are non-negotiable and shape every layer. Sources: `miniapps/.agents/skill
 ```
 miniapps/
 ├── README.md                ← this document (master plan)
-├── contracts/               ← Hardhat + OpenZeppelin Upgrades (UUPS)
-│   ├── contracts/
+├── contracts/               ← Foundry + OpenZeppelin Upgradeable (UUPS)
+│   ├── src/
 │   │   ├── NewsSubscription.sol
 │   │   └── mocks/MockERC20.sol
-│   ├── scripts/{deploy.ts,upgrade.ts,configure.ts}
-│   ├── test/NewsSubscription.t.ts
-│   ├── hardhat.config.ts
-│   ├── .env.example
-│   └── package.json
+│   ├── script/{Deploy.s.sol,Upgrade.s.sol,Configure.s.sol}
+│   ├── test/NewsSubscription.t.sol
+│   ├── lib/ (forge-std, openzeppelin-contracts-upgradeable, openzeppelin-foundry-upgrades)
+│   ├── foundry.toml  remappings.txt
+│   └── .env.example
 ├── backend/                 ← Express + TS (standalone, Railway)
 │   ├── src/
 │   │   ├── app.ts  server.ts
@@ -141,7 +141,7 @@ Each of `contracts/`, `backend/`, `frontend/` is a **standalone project** with i
 | Layer | Choice | Why |
 |------|--------|-----|
 | **Contract lang** | Solidity `^0.8.24`, OpenZeppelin **Contracts Upgradeable v5** | v5 is custom-error native; UUPS modules are battle-tested |
-| **Contract tooling** | **Hardhat** + `@openzeppelin/hardhat-upgrades` | Gold standard for UUPS proxy *lifecycle*: `deployProxy`/`upgradeProxy` auto-validate storage layout & upgrade safety. (Foundry is great for unit speed; here proxy safety matters more.) |
+| **Contract tooling** | **Foundry** + OpenZeppelin Contracts Upgradeable v5 + **OpenZeppelin Foundry Upgrades** | Fast Solidity-native tests + scripts; `Upgrades.deployUUPSProxy` / `Upgrades.upgradeProxy` still validate UUPS storage-layout safety (requires `ffi`, `ast`, `build_info` in `foundry.toml`). |
 | **Frontend** | **Next.js (App Router)** + **viem** (raw, no wagmi) + Tailwind | viem is the only SDK with native `feeCurrency`; dropping wagmi/RainbowKit keeps the bundle under 2 MB |
 | **Backend** | **Express 4 + TypeScript** | Mirrors the conventions the team already runs in Celiq's BE (Zod env, errorHandler, service/route split) without sharing code |
 | **On-chain reads** | viem `publicClient` | `isActive()`, event indexing for `/stats` |
@@ -303,36 +303,38 @@ contract NewsSubscription is
 - **Storage discipline:** UUPS requires append-only storage. The `__gap` reserves slots; `@openzeppelin/hardhat-upgrades` will *fail the upgrade* if a change is layout-unsafe. (A future hardening step is migrating to ERC-7201 namespaced storage.)
 - **Ownership:** start with a single owner EOA for speed; migrate ownership to a **multisig (Safe)** before/at mainnet for production. Documented in Open Decisions.
 
-### Contract tooling — deploy / upgrade / verify
+### Contract tooling — deploy / upgrade / verify (Foundry)
 
-```ts
-// scripts/deploy.ts  (Hardhat + @openzeppelin/hardhat-upgrades)
-import { ethers, upgrades } from "hardhat";
-async function main() {
-  const Factory = await ethers.getContractFactory("NewsSubscription");
-  const proxy = await upgrades.deployProxy(
-    Factory,
-    [process.env.OWNER_ADDRESS, process.env.TREASURY_ADDRESS],
-    { kind: "uups", initializer: "initialize" }
-  );
-  await proxy.waitForDeployment();
-  console.log("Proxy:", await proxy.getAddress());
+```solidity
+// script/Deploy.s.sol — OpenZeppelin Foundry Upgrades
+import {Script, console} from "forge-std/Script.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+import {NewsSubscription} from "../src/NewsSubscription.sol";
+
+contract Deploy is Script {
+    function run() external {
+        vm.startBroadcast();
+        address proxy = Upgrades.deployUUPSProxy(
+            "NewsSubscription.sol",
+            abi.encodeCall(
+                NewsSubscription.initialize,
+                (vm.envAddress("OWNER_ADDRESS"), vm.envAddress("TREASURY_ADDRESS"))
+            )
+        );
+        console.log("Proxy:", proxy);
+        vm.stopBroadcast();
+    }
 }
-main();
 ```
 
-```ts
-// scripts/upgrade.ts
-import { ethers, upgrades } from "hardhat";
-async function main() {
-  const V2 = await ethers.getContractFactory("NewsSubscriptionV2");
-  await upgrades.upgradeProxy(process.env.PROXY_ADDRESS!, V2); // validates storage layout
-}
-main();
+```solidity
+// script/Upgrade.s.sol — validates storage layout vs the live proxy
+Upgrades.upgradeProxy(vm.envAddress("PROXY_ADDRESS"), "NewsSubscriptionV2.sol", "");
 ```
 
-- **Networks:** deploy to **Celo Sepolia** (chain `11142220`) first, then **Celo Mainnet** (`42220`).
-- **Verify (Celoscan / Etherscan V2 unified key):** `npx hardhat verify --network celo <PROXY_ADDRESS>` — verify both proxy and implementation; collect a sample tx hash per user-facing method (MiniPay submission requires this).
+- **`foundry.toml`** must set `ffi = true`, `ast = true`, `build_info = true`, and remap OZ libs (the Upgrades plugin reads build-info to enforce upgrade safety).
+- **Deploy:** `forge script script/Deploy.s.sol --rpc-url $CELO_SEPOLIA_RPC --broadcast --ffi` → Celo **Sepolia** (`11142220`) first, then **Mainnet** (`42220`).
+- **Verify (Etherscan V2 unified key works for Celoscan):** `forge verify-contract <IMPL_ADDRESS> NewsSubscription --chain celo --watch`; also verify the proxy. Collect a sample tx hash per user-facing method (MiniPay requires this).
 - viem **EIP-55 checksum** trap: store the deployed address lowercase or via `cast to-check-sum-address` — a hand-recased address breaks viem everywhere.
 
 ---
@@ -429,7 +431,7 @@ From `minipay-requirements.md` — get these right before applying:
 ## 10. Build plan (milestones)
 
 1. **M0 — Scaffold.** Create `contracts/`, `backend/`, `frontend/` with their own `package.json` + `.env.example`. Wire celopedia-skill references.
-2. **M1 — Contract.** Implement `NewsSubscription`, full test suite (subscribe, renew-stacking, allowlist, price-not-set reverts, **promo active vs expired via `currentPrice`**, pause, upgrade-safety, non-custody invariant `balanceOf(contract)==0`). Deploy + verify on **Sepolia**; run `configure.ts` to set tokens, regular prices, promo prices, and `promoEndsAt`.
+2. **M1 — Contract.** Implement `NewsSubscription` (Foundry), full test suite (subscribe, renew-stacking, allowlist, price-not-set reverts, **promo active vs expired via `currentPrice`**, pause, upgrade-safety, non-custody invariant `balanceOf(contract)==0`). Deploy + verify on **Sepolia**; run `Configure.s.sol` to set tokens, regular prices, promo prices, and `promoEndsAt`.
 3. **M2 — Frontend MVP.** MiniPay detect/auto-connect, feed, paywall, subscribe (approve + subscribe) on Sepolia. Validate at 360×640 on a real device via ngrok.
 4. **M3 — Backend.** RSS ingest + AI summaries + chain reads + quota gate + `/stats` indexer.
 5. **M4 — Mainnet + ship.** Deploy contract to **Celo Mainnet**, migrate owner to multisig, FE→Vercel, BE→Railway. Collect sample tx hashes.
