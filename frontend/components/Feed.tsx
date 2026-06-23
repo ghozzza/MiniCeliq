@@ -7,8 +7,9 @@
 // Decoration only (no behavior change): a calm stat ribbon, a featured lead story
 // with a serif drop cap, and a subtle fade-up reveal on the rows. All motion is
 // disabled under prefers-reduced-motion (see globals.css).
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchNews, type NewsItem } from "@/lib/api";
+import { categoryOf, CATEGORIES, type Category } from "@/lib/category";
 import { copy } from "@/lib/copy";
 import { formatRelative } from "@/lib/time";
 
@@ -28,6 +29,50 @@ function StatRibbon({ headlines }: { headlines: number }) {
         <span className="font-plex-mono num text-ink-2">{headlines}</span>{" "}
         headlines
       </span>
+    </div>
+  );
+}
+
+// Horizontal, scrollable filter chip bar. "All" plus only the categories that
+// are actually present in the current items. Mirrors the SubscribeSheet token
+// selector chip styling (active = accent, inactive = strong-rule outline).
+type Filter = Category | "All";
+
+function FilterBar({
+  present,
+  active,
+  onSelect,
+}: {
+  present: Category[];
+  active: Filter;
+  onSelect: (f: Filter) => void;
+}) {
+  const chips: Filter[] = ["All", ...present];
+  return (
+    <div
+      role="tablist"
+      aria-label={copy.feed.filterAria}
+      className="flex gap-2 overflow-x-auto border-b-[0.5px] border-rule px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {chips.map((chip) => {
+        const isActive = chip === active;
+        return (
+          <button
+            key={chip}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onSelect(chip)}
+            className={`shrink-0 whitespace-nowrap border-[0.5px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-[120ms] ${
+              isActive
+                ? "border-accent bg-accent-soft text-ink"
+                : "border-rule-strong text-ink-2 hover:text-ink"
+            }`}
+          >
+            {chip === "All" ? copy.feed.filterAll : chip}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -125,6 +170,7 @@ function CompactRow({
 export function Feed({ onOpenSummary }: FeedProps) {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [error, setError] = useState(false);
+  const [filter, setFilter] = useState<Filter>("All");
   // Tracks whether we've ever loaded, so a failed *background* refresh never
   // blanks a feed we already have on screen.
   const loadedRef = useRef(false);
@@ -169,6 +215,23 @@ export function Feed({ onOpenSummary }: FeedProps) {
     };
   }, []);
 
+  // Categories actually present in the current feed, in canonical order. Chips
+  // reflect this set, so a chip can never yield an empty list (defensive copy
+  // below still handles it). Re-derives whenever a refetch swaps `items`.
+  const present = useMemo<Category[]>(() => {
+    if (!items) return [];
+    const seen = new Set(items.map(categoryOf));
+    return CATEGORIES.filter((c) => seen.has(c));
+  }, [items]);
+
+  // The rendered list: all items, or just those in the selected category. The
+  // first item of the filtered list becomes the lead story.
+  const filtered = useMemo<NewsItem[]>(() => {
+    if (!items) return [];
+    if (filter === "All") return items;
+    return items.filter((item) => categoryOf(item) === filter);
+  }, [items, filter]);
+
   if (error) {
     return (
       <p className="px-4 py-10 text-[14px] text-ink-muted">{copy.feed.error}</p>
@@ -194,22 +257,37 @@ export function Feed({ onOpenSummary }: FeedProps) {
     );
   }
 
-  const [lead, ...rest] = items;
+  // If a refetch dropped the only story of the active category, the chip is gone
+  // — fall back to "All" so we never render an empty filtered list.
+  const activeFilter: Filter =
+    filter !== "All" && !present.includes(filter) ? "All" : filter;
+  const visible = activeFilter === "All" ? items : filtered;
+
+  const [lead, ...rest] = visible;
 
   return (
     <div>
       <StatRibbon headlines={items.length} />
 
-      {/* Featured lead story — editorial hierarchy above the compact list. */}
-      <LeadStory item={lead} index={0} onOpen={onOpenSummary} />
+      {/* Topic filter chips — only categories present in the current feed. */}
+      <FilterBar present={present} active={activeFilter} onSelect={setFilter} />
 
-      <ul className="px-4">
-        {rest.map((item, i) => (
-          <li key={item.id}>
-            <CompactRow item={item} index={i + 1} onOpen={onOpenSummary} />
-          </li>
-        ))}
-      </ul>
+      {visible.length === 0 ? (
+        <p className="px-4 py-10 text-[14px] text-ink-muted">{copy.feed.empty}</p>
+      ) : (
+        <>
+          {/* Featured lead story — editorial hierarchy above the compact list. */}
+          <LeadStory item={lead} index={0} onOpen={onOpenSummary} />
+
+          <ul className="px-4">
+            {rest.map((item, i) => (
+              <li key={item.id}>
+                <CompactRow item={item} index={i + 1} onOpen={onOpenSummary} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

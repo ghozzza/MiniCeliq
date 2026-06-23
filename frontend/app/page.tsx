@@ -1,7 +1,7 @@
 "use client";
 
 // Home: feed + summary sheet + paywall + subscribe sheet, wired to MiniPay state.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMiniPay } from "@/hooks/useMiniPay";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useCenyBalance } from "@/hooks/useCenyBalance";
@@ -77,6 +77,13 @@ export default function HomePage() {
           </p>
         )}
       </div>
+
+      {/* Renewal nudge — only in the final week of an active subscription. */}
+      <RenewalNudge
+        isActive={isActive}
+        expiry={expiry}
+        onRenew={() => setShowSubscribe(true)}
+      />
 
       {/* Morning Brief — once-daily AI digest, a perk for subscribers. The card
           re-fetches when `isActive` flips, so it unlocks right after a subscribe. */}
@@ -157,4 +164,56 @@ function formatDate(unixSeconds: number): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+// Gold-toned strip nudging an active subscriber to renew in their final week.
+// Renewal stacks on-chain (the same subscribe flow extends the expiry), so the
+// CTA simply reopens the SubscribeSheet. Hidden unless active AND ≤ 7 days out.
+const RENEWAL_WINDOW_DAYS = 7;
+
+function RenewalNudge({
+  isActive,
+  expiry,
+  onRenew,
+}: {
+  isActive: boolean;
+  expiry: number | null;
+  onRenew: () => void;
+}) {
+  // Read "now" from state (set after mount) rather than calling Date.now() during
+  // render — keeps render pure and avoids a server/client hydration mismatch.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Math.floor(Date.now() / 1000));
+  }, [expiry]);
+
+  if (!isActive || !expiry || now === null) return null;
+
+  const secondsLeft = expiry - now;
+  // Round up so the last partial day still reads "1 day", not "0 days".
+  const daysLeft = Math.ceil(secondsLeft / 86_400);
+  if (daysLeft <= 0 || daysLeft > RENEWAL_WINDOW_DAYS) return null;
+
+  const dayWord = daysLeft === 1 ? copy.renewal.day : copy.renewal.days;
+
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex items-center justify-between gap-3 border-l-2 border-gold bg-gold/[0.08] py-2.5 pl-3 pr-2">
+        <p className="text-[12.5px] leading-snug text-ink-2">
+          {copy.renewal.expiresIn}{" "}
+          <span className="font-plex-mono num font-semibold text-ink">
+            {daysLeft}
+          </span>{" "}
+          {dayWord}
+        </p>
+        <button
+          type="button"
+          onClick={onRenew}
+          className="shrink-0 bg-gold px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-warm transition-opacity active:opacity-80"
+        >
+          {copy.renewal.cta}
+        </button>
+      </div>
+    </div>
+  );
 }

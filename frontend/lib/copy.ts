@@ -25,6 +25,9 @@ export const copy = {
     empty: "No stories right now. Check back soon.",
     error: "Couldn't load the feed. Pull to refresh.",
     readSummary: "AI summary",
+    // Filter chip bar above the headline list.
+    filterAll: "All",
+    filterAria: "Filter headlines by topic",
   },
   summary: {
     title: "AI summary",
@@ -70,6 +73,14 @@ export const copy = {
     notConfigured: "Subscriptions open soon.",
     activeTitle: "You're subscribed",
     activeUntil: "Active until",
+  },
+  // Renewal nudge — only surfaces in the final week of an active subscription.
+  renewal: {
+    // Used as: `${expiresIn} N ${day|days}`.
+    expiresIn: "Your subscription expires in",
+    day: "day",
+    days: "days",
+    cta: "Renew",
   },
   // CENY reward token — a perk minted to the subscriber on every subscribe.
   reward: {
