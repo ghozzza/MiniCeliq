@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchNews, type NewsItem } from "@/lib/api";
 import { categoryOf, CATEGORIES, type Category } from "@/lib/category";
+import { sentimentOf, SENTIMENTS, type Sentiment } from "@/lib/sentiment";
 import { copy } from "@/lib/copy";
 import { formatRelative } from "@/lib/time";
 
@@ -77,6 +78,82 @@ function FilterBar({
   );
 }
 
+// Per-tone color tokens. Bullish = green (pos), Bearish = red (neg), Neutral =
+// muted. `softBg` has no design token for red, so it uses a light arbitrary tint.
+const TONE: Record<
+  Sentiment,
+  { text: string; dot: string; softBg: string; border: string }
+> = {
+  Bullish: {
+    text: "text-pos",
+    dot: "bg-pos",
+    softBg: "bg-accent-soft",
+    border: "border-pos",
+  },
+  Bearish: {
+    text: "text-neg",
+    dot: "bg-neg",
+    softBg: "bg-[#fdecec]",
+    border: "border-neg",
+  },
+  Neutral: {
+    text: "text-ink-muted",
+    dot: "bg-ink-muted",
+    softBg: "bg-rule",
+    border: "border-rule-strong",
+  },
+};
+
+type SentimentFilter = Sentiment | "All";
+
+// Second filter dimension, kept visually distinct from the square topic chips:
+// a leading "Tone" micro-label plus pill-shaped, color-coded chips (each with a
+// tone dot). Composes with the category filter + search. Default "All".
+function SentimentBar({
+  active,
+  onSelect,
+}: {
+  active: SentimentFilter;
+  onSelect: (s: SentimentFilter) => void;
+}) {
+  const chips: SentimentFilter[] = ["All", ...SENTIMENTS];
+  return (
+    <div
+      role="tablist"
+      aria-label={copy.feed.sentimentAria}
+      className="flex items-center gap-2 overflow-x-auto border-b-[0.5px] border-rule px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-muted">
+        {copy.feed.sentimentLabel}
+      </span>
+      {chips.map((chip) => {
+        const isActive = chip === active;
+        const tone = chip === "All" ? null : TONE[chip];
+        const activeCls = tone
+          ? `${tone.border} ${tone.softBg} ${tone.text}`
+          : "border-accent bg-accent-soft text-ink";
+        return (
+          <button
+            key={chip}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onSelect(chip)}
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[0.5px] px-2.5 py-1 text-[11px] font-medium transition-colors duration-[120ms] ${
+              isActive ? activeCls : "border-rule-strong text-ink-2 hover:text-ink"
+            }`}
+          >
+            {tone && (
+              <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+            )}
+            {chip === "All" ? copy.feed.sentimentAll : chip}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Compact, editorial headline search: a single thin-rule underlined field with a
 // clear (×) affordance once there's text. Filters the feed by title (case-
 // insensitive) and composes with the topic filter. Lightweight — no debounce
@@ -115,7 +192,19 @@ function SearchBar({
   );
 }
 
-// Editorial source · category · time meta line. Time is compact + relative
+// Subtle inline tone badge: a colored dot + uppercase word, tinted by sentiment
+// (Bullish = green, Bearish = red, Neutral = muted). Sits inside the meta line.
+function SentimentTag({ sentiment }: { sentiment: Sentiment }) {
+  const tone = TONE[sentiment];
+  return (
+    <span className={`inline-flex items-center gap-1 ${tone.text}`}>
+      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      {sentiment}
+    </span>
+  );
+}
+
+// Editorial source · category · time · tone meta line. Time is compact + relative
 // (e.g. "3h ago") in a mono face to match the editorial number styling.
 function MetaLine({ item }: { item: NewsItem }) {
   return (
@@ -135,6 +224,8 @@ function MetaLine({ item }: { item: NewsItem }) {
           </span>
         </>
       )}
+      <span aria-hidden>·</span>
+      <SentimentTag sentiment={sentimentOf(item)} />
     </span>
   );
 }
@@ -209,6 +300,8 @@ export function Feed({ onOpenSummary }: FeedProps) {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [error, setError] = useState(false);
   const [filter, setFilter] = useState<Filter>("All");
+  // Second filter dimension — market tone, composes with category + search.
+  const [sentiment, setSentiment] = useState<SentimentFilter>("All");
   // Pure render state — filters the feed by title, composing with `filter`.
   const [query, setQuery] = useState("");
   // Tracks whether we've ever loaded, so a failed *background* refresh never
@@ -294,13 +387,14 @@ export function Feed({ onOpenSummary }: FeedProps) {
   const activeFilter: Filter =
     filter !== "All" && !present.includes(filter) ? "All" : filter;
 
-  // Compose: keep items matching BOTH the active category AND the search query
-  // (case-insensitive title match), then the first survivor becomes the lead.
+  // Compose: keep items matching the active category AND tone AND the search
+  // query (case-insensitive title match); the first survivor becomes the lead.
   const q = query.trim().toLowerCase();
   const visible = items.filter((item) => {
     const inCategory = activeFilter === "All" || categoryOf(item) === activeFilter;
+    const inSentiment = sentiment === "All" || sentimentOf(item) === sentiment;
     const inSearch = q === "" || item.title.toLowerCase().includes(q);
-    return inCategory && inSearch;
+    return inCategory && inSentiment && inSearch;
   });
 
   const [lead, ...rest] = visible;
@@ -315,9 +409,14 @@ export function Feed({ onOpenSummary }: FeedProps) {
       {/* Topic filter chips — only categories present in the current feed. */}
       <FilterBar present={present} active={activeFilter} onSelect={setFilter} />
 
+      {/* Tone filter — a distinct, color-coded dimension below the topic chips. */}
+      <SentimentBar active={sentiment} onSelect={setSentiment} />
+
       {visible.length === 0 ? (
         <p className="px-4 py-10 text-[14px] text-ink-muted">
-          {q ? copy.feed.noMatches : copy.feed.empty}
+          {q || activeFilter !== "All" || sentiment !== "All"
+            ? copy.feed.noMatches
+            : copy.feed.empty}
         </p>
       ) : (
         <>

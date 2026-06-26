@@ -5,6 +5,7 @@
 // Editorial styling: serif article title, uppercase meta, thin rules.
 import { useEffect, useState } from "react";
 import { fetchSummary, type NewsItem } from "@/lib/api";
+import { sentimentOf } from "@/lib/sentiment";
 import { copy } from "@/lib/copy";
 import { formatPublished } from "@/lib/time";
 
@@ -41,6 +42,30 @@ export function SummaryCard({
       /* clipboard unavailable — ignore */
     }
   }
+
+  // Native share opens the OS share sheet (it hands off cleanly and does NOT trap
+  // MiniPay's webview the way an external <a> would). Where it's unavailable, fall
+  // back to copying the link — same confirmation as the copy button.
+  async function share() {
+    if (!hasUrl) return;
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: item.title, url: item.url });
+      } catch {
+        /* user dismissed the share sheet or it failed — no-op */
+      }
+      return;
+    }
+    await copyLink();
+  }
+
+  const sentiment = sentimentOf(item);
+  const tone =
+    sentiment === "Bullish"
+      ? { text: "text-pos", dot: "bg-pos" }
+      : sentiment === "Bearish"
+        ? { text: "text-neg", dot: "bg-neg" }
+        : { text: "text-ink-muted", dot: "bg-ink-muted" };
 
   // Fetch on mount. The parent keys this component by item.id, so a new article
   // remounts fresh — no synchronous state reset needed here.
@@ -92,6 +117,11 @@ export function SummaryCard({
               </span>
             </>
           )}
+          <span aria-hidden>·</span>
+          <span className={`inline-flex items-center gap-1 ${tone.text}`}>
+            <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+            {sentiment}
+          </span>
         </p>
 
         <div className="mt-4 min-h-20 border-t-[0.5px] border-rule pt-4 text-[15px] leading-[1.6] text-ink-2">
@@ -113,12 +143,20 @@ export function SummaryCard({
         )}
 
         {hasUrl && (
-          <button
-            onClick={copyLink}
-            className="mt-4 inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
-          >
-            {copied ? "Original link copied ✓" : "Copy original link"}
-          </button>
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <button
+              onClick={share}
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
+            >
+              {copy.summary.share}
+            </button>
+            <button
+              onClick={copyLink}
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
+            >
+              {copied ? copy.summary.copied : copy.summary.copyLink}
+            </button>
+          </div>
         )}
 
         <button

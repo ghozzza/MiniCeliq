@@ -71,6 +71,12 @@ export function SubscribeSheet({
   const [status, setStatus] = useState<FlowStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Receipt: the subscribe tx hash, kept for the success view (shortened display +
+  // copy-to-clipboard + MiniPay native receipt deeplink). `copied` flashes the
+  // "Copied" confirmation briefly after a successful clipboard write.
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
   // CENY reward for the selected plan, stored with the plan it belongs to so a
   // plan switch re-derives cleanly (same cascade-free pattern as `priced`).
   const [rewarded, setRewarded] = useState<{ plan: Plan; value: bigint } | null>(
@@ -190,6 +196,7 @@ export function SubscribeSheet({
       const ok = await waitForSuccess(subHash);
       if (!ok) throw new Error("subscribe failed");
 
+      setTxHash(subHash);
       setStatus("success");
       onSubscribed();
     } catch {
@@ -197,6 +204,21 @@ export function SubscribeSheet({
       setErrorMsg(copy.subscribe.error);
     }
   }, [address, plan, token, preferred, onSubscribed]);
+
+  // Copy the FULL tx hash to the clipboard and flash a brief "Copied" confirmation.
+  // No navigation — the clipboard is the only side effect.
+  const handleCopyHash = useCallback(() => {
+    if (!txHash || !navigator.clipboard) return;
+    navigator.clipboard
+      .writeText(txHash)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {
+        // Clipboard denied — leave the label as-is; the receipt link still works.
+      });
+  }, [txHash]);
 
   const busy = status === "approving" || status === "subscribing";
 
@@ -218,9 +240,45 @@ export function SubscribeSheet({
             <h2 className="font-newsreader text-[22px] font-bold leading-[1.2] tracking-[-0.015em] text-ink">
               {copy.subscribe.success}
             </h2>
+
+            {/* Receipt: shortened confirmation hash + copy-the-full-hash affordance. */}
+            {txHash && (
+              <div className="mt-5 flex items-center justify-between gap-3 border-[0.5px] border-rule bg-warm px-3 py-2.5 text-left">
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-[0.09em] text-ink-muted">
+                    Confirmation
+                  </p>
+                  <p className="font-plex-mono num text-[13px] text-ink-2">
+                    {shortHash(txHash)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyHash}
+                  className="shrink-0 border-[0.5px] border-rule-strong px-2.5 py-1 text-[11px] font-medium text-ink-2 transition-colors active:bg-accent-soft"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            )}
+
+            {/* Primary action: MiniPay's own receipt screen (internal deeplink, safe). */}
+            {txHash && (
+              <a
+                href={`https://link.minipay.xyz/receipt?tx=${txHash}&celebrate`}
+                className="mt-4 block w-full bg-ink py-3 text-[14px] font-semibold text-warm transition-colors active:bg-accent"
+              >
+                View receipt
+              </a>
+            )}
+
             <button
               onClick={onClose}
-              className="mt-5 w-full bg-ink py-3 text-[14px] font-semibold text-warm transition-colors active:bg-accent"
+              className={
+                txHash
+                  ? "mt-2 w-full py-3 text-[14px] font-medium text-ink-muted"
+                  : "mt-5 w-full bg-ink py-3 text-[14px] font-semibold text-warm transition-colors active:bg-accent"
+              }
             >
               Done
             </button>
@@ -370,4 +428,10 @@ export function SubscribeSheet({
 // Show up to 2 decimals, trimming trailing zeros (e.g. 0.10 -> "0.1", 5 -> "5").
 function formatPrice(n: number): string {
   return Number(n.toFixed(2)).toString();
+}
+
+// Shorten a tx hash for display: "0x1234… abcd". The full hash is what gets copied
+// and what the receipt deeplink carries — this is purely a compact label.
+function shortHash(hash: string): string {
+  return `${hash.slice(0, 6)}… ${hash.slice(-4)}`;
 }
