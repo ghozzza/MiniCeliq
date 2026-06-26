@@ -7,12 +7,21 @@
 // Decoration only (no behavior change): a calm stat ribbon, a featured lead story
 // with a serif drop cap, and a subtle fade-up reveal on the rows. All motion is
 // disabled under prefers-reduced-motion (see globals.css).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchNews, type NewsItem } from "@/lib/api";
 import { categoryOf, CATEGORIES, type Category } from "@/lib/category";
-import { sentimentOf, SENTIMENTS, type Sentiment } from "@/lib/sentiment";
+import { sentimentOf, type Sentiment } from "@/lib/sentiment";
 import { copy } from "@/lib/copy";
 import { formatRelative } from "@/lib/time";
+import {
+  FilterSheet,
+  type CategoryFilter,
+  type ToneFilter,
+} from "@/components/FilterSheet";
+
+// The feed's view selector. Picks WHAT list to show; the FilterSheet (category +
+// tone) and the search box then narrow it. Default "Latest".
+type Mode = "Latest" | "For You" | "Saved";
 
 interface FeedProps {
   onOpenSummary: (item: NewsItem) => void;
@@ -77,91 +86,136 @@ function SparkGlyph({ filled }: { filled: boolean }) {
   );
 }
 
-// Horizontal, scrollable filter chip bar. Two leading, visually-distinct
-// "special" chips come first — accent-toned "For You" (personalized) then
-// gold-toned "Saved" (with a count) — followed by "All" plus only the categories
-// actually present in the current items. The topic chips mirror the
-// SubscribeSheet token selector styling (active = accent, inactive = strong-rule
-// outline); the special chips are set apart by a leading glyph + their own tint.
-type Filter = Category | "All" | "Saved" | "For You";
-
-function FilterBar({
-  present,
+// Mode tabs — the single compact view selector that replaces the old mixed chip
+// bar. Three equal segments: Latest (default) · For You (sparkle) · Saved
+// (bookmark + live count). Active segment = accent fill; the rest = strong-rule
+// outline. Equal-width so the whole row fits a 360px screen without scrolling.
+function ModeTabs({
   active,
   onSelect,
   savedCount,
 }: {
-  present: Category[];
-  active: Filter;
-  onSelect: (f: Filter) => void;
+  active: Mode;
+  onSelect: (m: Mode) => void;
   savedCount: number;
 }) {
-  const chips: Filter[] = ["All", ...present];
-  const savedActive = active === "Saved";
-  const forYouActive = active === "For You";
+  const tabs: { mode: Mode; label: string }[] = [
+    { mode: "Latest", label: copy.feed.modeLatest },
+    { mode: "For You", label: copy.feed.modeForYou },
+    { mode: "Saved", label: copy.feed.modeSaved },
+  ];
   return (
     <div
       role="tablist"
-      aria-label={copy.feed.filterAria}
-      className="flex gap-2 overflow-x-auto border-b-[0.5px] border-rule px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      aria-label={copy.feed.modeAria}
+      className="flex gap-1.5 border-b-[0.5px] border-rule px-4 py-2.5"
     >
-      {/* Leading, personalized For-You chip — accent-toned (a soft accent outline
-          when idle so it reads as "special", solid accent when active). */}
-      <button
-        type="button"
-        role="tab"
-        aria-selected={forYouActive}
-        aria-label={copy.feed.forYouAria}
-        onClick={() => onSelect("For You")}
-        className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-[0.5px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-[120ms] ${
-          forYouActive
-            ? "border-accent bg-accent-soft text-ink"
-            : "border-accent/40 text-accent hover:border-accent"
-        }`}
-      >
-        <SparkGlyph filled={forYouActive} />
-        {copy.feed.forYouFilter}
-      </button>
-      {/* Leading, visually-distinct Saved chip — gold-toned, with a live count. */}
-      <button
-        type="button"
-        role="tab"
-        aria-selected={savedActive}
-        aria-label={copy.feed.savedAria}
-        onClick={() => onSelect("Saved")}
-        className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-[0.5px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-[120ms] ${
-          savedActive
-            ? "border-gold bg-gold/[0.12] text-ink"
-            : "border-rule-strong text-ink-2 hover:text-ink"
-        }`}
-      >
-        <BookmarkGlyph filled={savedActive} />
-        {copy.feed.savedFilter}
-        {savedCount > 0 && (
-          <span className="font-plex-mono num text-[11px] text-ink-muted">
-            {savedCount}
-          </span>
-        )}
-      </button>
-      {chips.map((chip) => {
-        const isActive = chip === active;
+      {tabs.map(({ mode, label }) => {
+        const isActive = mode === active;
         return (
           <button
-            key={chip}
+            key={mode}
             type="button"
             role="tab"
             aria-selected={isActive}
-            onClick={() => onSelect(chip)}
-            className={`shrink-0 whitespace-nowrap border-[0.5px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-[120ms] ${
+            onClick={() => onSelect(mode)}
+            className={`flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-[0.5px] px-2 py-1.5 text-[12.5px] font-medium transition-colors duration-[120ms] ${
               isActive
                 ? "border-accent bg-accent-soft text-ink"
                 : "border-rule-strong text-ink-2 hover:text-ink"
             }`}
           >
-            {chip === "All" ? copy.feed.filterAll : chip}
+            {mode === "For You" && <SparkGlyph filled={isActive} />}
+            {mode === "Saved" && <BookmarkGlyph filled={isActive} />}
+            {label}
+            {mode === "Saved" && savedCount > 0 && (
+              <span className="font-plex-mono num text-[11px] text-ink-muted">
+                {savedCount}
+              </span>
+            )}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// Sliders glyph for the Filter button.
+function FilterGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5"
+      aria-hidden
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+    >
+      <path d="M4 6h16M7 12h10M10 18h4" />
+    </svg>
+  );
+}
+
+// Slim toolbar: a compact headline search (underlined field + clear ×) on the
+// left and a "Filter" button on the right that opens the FilterSheet. The Filter
+// button carries an accent count badge whenever any category/tone filter is set.
+function Toolbar({
+  query,
+  onQuery,
+  onOpenFilter,
+  activeCount,
+}: {
+  query: string;
+  onQuery: (v: string) => void;
+  onOpenFilter: () => void;
+  activeCount: number;
+}) {
+  return (
+    <div className="flex items-stretch gap-2 border-b-[0.5px] border-rule px-4 py-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2 border-b-[0.5px] border-rule-strong pb-1.5">
+        <input
+          type="text"
+          inputMode="search"
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          placeholder={copy.feed.searchPlaceholder}
+          aria-label={copy.feed.searchAria}
+          className="min-w-0 flex-1 bg-transparent text-[14px] leading-none text-ink placeholder:text-ink-muted focus:outline-none"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => onQuery("")}
+            aria-label={copy.feed.searchClear}
+            className="-mr-0.5 shrink-0 px-1 py-0.5 text-[14px] leading-none text-ink-muted transition-colors active:text-ink"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onOpenFilter}
+        aria-label={
+          activeCount > 0
+            ? `${copy.feed.filterButton}, ${activeCount} ${copy.feed.filterActiveAria}`
+            : copy.feed.filterButton
+        }
+        className={`flex shrink-0 items-center gap-1.5 self-stretch border-[0.5px] px-3 text-[12px] font-medium transition-colors duration-[120ms] ${
+          activeCount > 0
+            ? "border-accent bg-accent-soft text-ink"
+            : "border-rule-strong text-ink-2 hover:text-ink"
+        }`}
+      >
+        <FilterGlyph />
+        {copy.feed.filterButton}
+        {activeCount > 0 && (
+          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 font-plex-mono num text-[10px] leading-none text-warm">
+            {activeCount}
+          </span>
+        )}
+      </button>
     </div>
   );
 }
@@ -191,94 +245,6 @@ const TONE: Record<
     border: "border-rule-strong",
   },
 };
-
-type SentimentFilter = Sentiment | "All";
-
-// Second filter dimension, kept visually distinct from the square topic chips:
-// a leading "Tone" micro-label plus pill-shaped, color-coded chips (each with a
-// tone dot). Composes with the category filter + search. Default "All".
-function SentimentBar({
-  active,
-  onSelect,
-}: {
-  active: SentimentFilter;
-  onSelect: (s: SentimentFilter) => void;
-}) {
-  const chips: SentimentFilter[] = ["All", ...SENTIMENTS];
-  return (
-    <div
-      role="tablist"
-      aria-label={copy.feed.sentimentAria}
-      className="flex items-center gap-2 overflow-x-auto border-b-[0.5px] border-rule px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
-      <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-muted">
-        {copy.feed.sentimentLabel}
-      </span>
-      {chips.map((chip) => {
-        const isActive = chip === active;
-        const tone = chip === "All" ? null : TONE[chip];
-        const activeCls = tone
-          ? `${tone.border} ${tone.softBg} ${tone.text}`
-          : "border-accent bg-accent-soft text-ink";
-        return (
-          <button
-            key={chip}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onSelect(chip)}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[0.5px] px-2.5 py-1 text-[11px] font-medium transition-colors duration-[120ms] ${
-              isActive ? activeCls : "border-rule-strong text-ink-2 hover:text-ink"
-            }`}
-          >
-            {tone && (
-              <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
-            )}
-            {chip === "All" ? copy.feed.sentimentAll : chip}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// Compact, editorial headline search: a single thin-rule underlined field with a
-// clear (×) affordance once there's text. Filters the feed by title (case-
-// insensitive) and composes with the topic filter. Lightweight — no debounce
-// (the list is small), search is pure render state.
-function SearchBar({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="border-b-[0.5px] border-rule px-4 py-2.5">
-      <div className="flex items-center gap-2 border-b-[0.5px] border-rule-strong pb-1.5">
-        <input
-          type="text"
-          inputMode="search"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={copy.feed.searchPlaceholder}
-          aria-label={copy.feed.searchAria}
-          className="min-w-0 flex-1 bg-transparent text-[14px] leading-none text-ink placeholder:text-ink-muted focus:outline-none"
-        />
-        {value && (
-          <button
-            type="button"
-            onClick={() => onChange("")}
-            aria-label={copy.feed.searchClear}
-            className="-mr-1 shrink-0 px-1.5 py-0.5 text-[14px] leading-none text-ink-muted transition-colors active:text-ink"
-          >
-            ×
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // Inline interest picker for the For-You view — a tidy accent-tinted panel (not a
 // full-screen step). A short prompt + the four categories as toggle chips (reusing
@@ -478,19 +444,26 @@ export function Feed({
 }: FeedProps) {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [error, setError] = useState(false);
-  const [filter, setFilter] = useState<Filter>("All");
-  // Second filter dimension — market tone, composes with category + search.
-  const [sentiment, setSentiment] = useState<SentimentFilter>("All");
-  // Pure render state — filters the feed by title, composing with `filter`.
+  // The view selector (Latest / For You / Saved). Default "Latest".
+  const [mode, setMode] = useState<Mode>("Latest");
+  // FilterSheet selections — a single category + a market tone, both composing
+  // with search. Live state; the sheet just edits these and closes.
+  const [category, setCategory] = useState<CategoryFilter>("All");
+  const [sentiment, setSentiment] = useState<ToneFilter>("All");
+  // Pure render state — filters the feed by title, composing with category + tone.
   const [query, setQuery] = useState("");
+  // Whether the FilterSheet bottom sheet is open.
+  const [sheetOpen, setSheetOpen] = useState(false);
   // For-You only: whether the inline interest picker is showing (vs the feed).
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Filter selection from the chip bar. Entering For-You with nothing chosen yet
-  // opens the picker; any other selection (or For-You with topics) shows the feed.
-  const handleSelectFilter = (f: Filter) => {
-    setFilter(f);
-    setPickerOpen(f === "For You" && !interestsSet);
+  // Mode switch from the tabs. Entering For-You with nothing chosen yet opens the
+  // interest picker; any other switch (or For-You with topics) shows the feed.
+  // Always close the sheet so it can't linger into the Saved view.
+  const handleSelectMode = (m: Mode) => {
+    setMode(m);
+    setSheetOpen(false);
+    setPickerOpen(m === "For You" && !interestsSet);
   };
   // Tracks whether we've ever loaded, so a failed *background* refresh never
   // blanks a feed we already have on screen.
@@ -536,15 +509,6 @@ export function Feed({
     };
   }, []);
 
-  // Categories actually present in the current feed, in canonical order. Chips
-  // reflect this set, so a chip can never yield an empty list (defensive copy
-  // below still handles it). Re-derives whenever a refetch swaps `items`.
-  const present = useMemo<Category[]>(() => {
-    if (!items) return [];
-    const seen = new Set(items.map(categoryOf));
-    return CATEGORIES.filter((c) => seen.has(c));
-  }, [items]);
-
   if (error) {
     return (
       <p className="px-4 py-10 text-[14px] text-ink-muted">{copy.feed.error}</p>
@@ -570,41 +534,33 @@ export function Feed({
     );
   }
 
-  // "Saved" and "For You" are always valid selections; for a category chip, fall
-  // back to "All" if a refetch dropped the only story of that category (so the
-  // topic filter never renders an empty list).
-  const activeFilter: Filter =
-    filter === "Saved" || filter === "For You"
-      ? filter
-      : filter !== "All" && !present.includes(filter)
-        ? "All"
-        : filter;
-
-  const onSaved = activeFilter === "Saved";
-  const onForYou = activeFilter === "For You";
+  const onSaved = mode === "Saved";
+  const onForYou = mode === "For You";
+  const onLatest = mode === "Latest";
   // Show the picker when For-You is active and either the user opened it (Edit /
   // fresh entry) or there's nothing chosen yet (a safety net — For-You with no
   // topics can only ever be the picker).
   const showPicker = onForYou && (pickerOpen || !interestsSet);
-  // Search + tone act on a live feed: keep them in the For-You feed view, but hide
-  // them in the Saved list and while the picker is open (no feed to filter yet).
-  const showFilters = !onSaved && !showPicker;
+  // The slim search + Filter toolbar acts on a live feed: keep it in the For-You
+  // feed view, but hide it in the Saved list and while the picker is open.
+  const showToolbar = !onSaved && !showPicker;
+  // Count of active sheet filters for the Filter button badge. Category only
+  // applies in Latest (For-You replaces it with the chosen interests); tone always.
+  const activeFilterCount =
+    (onLatest && category !== "All" ? 1 : 0) + (sentiment !== "All" ? 1 : 0);
 
-  // Saved view shows the bookmarked list as-is (bypassing topic/tone/search).
-  // Otherwise compose: keep items matching the active topic (a single category, or
-  // — under For-You — any of the chosen interests) AND tone AND the search query
+  // Saved view shows the bookmarked list as-is (bypassing category/tone/search).
+  // Otherwise compose: keep items matching the category (a single chosen one, or —
+  // under For-You — any of the chosen interests) AND tone AND the search query
   // (case-insensitive title match). Either way, the first survivor becomes the lead
   // and the rest render as compact rows — identical layout.
   const q = query.trim().toLowerCase();
   const visible = onSaved
     ? saved
     : items.filter((item) => {
-        const inCategory =
-          activeFilter === "All"
-            ? true
-            : onForYou
-              ? interests.includes(categoryOf(item))
-              : categoryOf(item) === activeFilter;
+        const inCategory = onForYou
+          ? interests.includes(categoryOf(item))
+          : category === "All" || categoryOf(item) === category;
         const inSentiment = sentiment === "All" || sentimentOf(item) === sentiment;
         const inSearch = q === "" || item.title.toLowerCase().includes(q);
         return inCategory && inSentiment && inSearch;
@@ -618,7 +574,7 @@ export function Feed({
       ? q || sentiment !== "All"
         ? copy.feed.noMatches
         : copy.feed.forYouEmpty
-      : q || activeFilter !== "All" || sentiment !== "All"
+      : q || category !== "All" || sentiment !== "All"
         ? copy.feed.noMatches
         : copy.feed.empty;
 
@@ -626,19 +582,22 @@ export function Feed({
     <div>
       <StatRibbon headlines={items.length} />
 
-      {/* Headline search + tone filter act on the live feed only — hidden in the
-          Saved view and while the For-You picker is open. */}
-      {showFilters && <SearchBar value={query} onChange={setQuery} />}
-
-      {/* Topic filter chips — leading For-You + Saved chips, then categories. */}
-      <FilterBar
-        present={present}
-        active={activeFilter}
-        onSelect={handleSelectFilter}
+      {/* View selector — Latest · For You · Saved. */}
+      <ModeTabs
+        active={mode}
+        onSelect={handleSelectMode}
         savedCount={saved.length}
       />
 
-      {showFilters && <SentimentBar active={sentiment} onSelect={setSentiment} />}
+      {/* Slim search + Filter row — live-feed views only (not Saved / picker). */}
+      {showToolbar && (
+        <Toolbar
+          query={query}
+          onQuery={setQuery}
+          onOpenFilter={() => setSheetOpen(true)}
+          activeCount={activeFilterCount}
+        />
+      )}
 
       {showPicker ? (
         <InterestPicker
@@ -678,6 +637,23 @@ export function Feed({
             </>
           )}
         </>
+      )}
+
+      {/* Category + Tone selectors, parked off-screen until "Filter" opens them.
+          In For-You the Category section is hidden (interests are the category). */}
+      {sheetOpen && (
+        <FilterSheet
+          category={category}
+          onCategory={setCategory}
+          tone={sentiment}
+          onTone={setSentiment}
+          showCategory={onLatest}
+          onClear={() => {
+            setCategory("All");
+            setSentiment("All");
+          }}
+          onClose={() => setSheetOpen(false)}
+        />
       )}
     </div>
   );

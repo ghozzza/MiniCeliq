@@ -25,26 +25,30 @@ export const copy = {
     empty: "No stories right now. Check back soon.",
     error: "Couldn't load the feed. Pull to refresh.",
     readSummary: "AI summary",
-    // Filter chip bar above the headline list.
-    filterAll: "All",
-    filterAria: "Filter headlines by topic",
-    // Sentiment filter — a second, distinct dimension below the topic chips.
-    sentimentLabel: "Tone",
-    sentimentAll: "All",
-    sentimentAria: "Filter headlines by market tone",
-    // Headline search (composes with the topic + tone filters).
+    // Mode tabs — the feed's view selector (replaces the old mixed chip bar).
+    modeLatest: "Latest",
+    modeForYou: "For You",
+    modeSaved: "Saved",
+    modeAria: "Switch feed view",
+    // Slim toolbar: headline search + a Filter button that opens the FilterSheet.
     searchPlaceholder: "Search headlines",
     searchAria: "Search headlines by title",
     searchClear: "Clear search",
+    filterButton: "Filter",
+    // Spoken as e.g. "Filter, 2 active" — count of category/tone filters applied.
+    filterActiveAria: "active",
     noMatches: "No headlines match these filters.",
-    // Saved articles — a leading filter chip that swaps in your bookmarked stories.
-    savedFilter: "Saved",
-    savedAria: "Show saved articles",
+    // FilterSheet — bottom sheet holding the category + tone selectors.
+    filterTitle: "Filters",
+    filterCategory: "Category",
+    filterTone: "Tone",
+    filterAll: "All",
+    filterClear: "Clear",
+    filterDone: "Done",
+    // Saved view — your bookmarked stories (a mode tab).
     savedEmpty: "No saved articles yet — tap Save on a story.",
     // For You — a personalized feed filtered to the topics you choose, persisted
-    // locally. A leading, accent-toned special chip beside Saved.
-    forYouFilter: "For You",
-    forYouAria: "Show your personalized feed",
+    // locally (a mode tab). Tone + search still compose; category is the interests.
     // Inline interest picker, shown when no topics are chosen yet (or on Edit).
     forYouPrompt: "Pick the topics you follow — we'll tune your feed to them.",
     forYouDone: "Done",
