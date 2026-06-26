@@ -41,6 +41,16 @@ export const copy = {
     savedFilter: "Saved",
     savedAria: "Show saved articles",
     savedEmpty: "No saved articles yet — tap Save on a story.",
+    // For You — a personalized feed filtered to the topics you choose, persisted
+    // locally. A leading, accent-toned special chip beside Saved.
+    forYouFilter: "For You",
+    forYouAria: "Show your personalized feed",
+    // Inline interest picker, shown when no topics are chosen yet (or on Edit).
+    forYouPrompt: "Pick the topics you follow — we'll tune your feed to them.",
+    forYouDone: "Done",
+    forYouTopics: "Your topics",
+    forYouEdit: "Edit topics",
+    forYouEmpty: "Nothing in your topics right now. Tap Edit to follow more.",
   },
   summary: {
     title: "AI summary",

@@ -18,6 +18,12 @@ interface FeedProps {
   onOpenSummary: (item: NewsItem) => void;
   // Saved articles (lifted to HomePage). Powers the "Saved" filter view + count.
   saved: NewsItem[];
+  // For-You personalization (lifted to HomePage — single source of truth). The
+  // feed filters to these when "For You" is active; the inline picker toggles them.
+  interests: Category[];
+  hasInterest: (c: Category) => boolean;
+  onToggleInterest: (c: Category) => void;
+  interestsSet: boolean;
 }
 
 // Thin hairline band of calm, mostly-static figures under the masthead.
@@ -53,11 +59,31 @@ function BookmarkGlyph({ filled }: { filled: boolean }) {
   );
 }
 
-// Horizontal, scrollable filter chip bar. A leading, gold-toned "Saved" chip
-// (with a count) precedes "All" plus only the categories actually present in the
-// current items. The topic chips mirror the SubscribeSheet token selector styling
-// (active = accent, inactive = strong-rule outline); Saved is set apart in gold.
-type Filter = Category | "All" | "Saved";
+// Sparkle glyph — marks the personalized "For You" chip. Outline by default,
+// filled when the For-You view is active (mirrors the bookmark glyph's pattern).
+function SparkGlyph({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3 w-3"
+      aria-hidden
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinejoin="round"
+    >
+      <path d="M12 2.5l1.9 5.8 5.8 1.9-5.8 1.9L12 17.9l-1.9-5.8L4.3 10l5.8-1.9L12 2.5z" />
+    </svg>
+  );
+}
+
+// Horizontal, scrollable filter chip bar. Two leading, visually-distinct
+// "special" chips come first — accent-toned "For You" (personalized) then
+// gold-toned "Saved" (with a count) — followed by "All" plus only the categories
+// actually present in the current items. The topic chips mirror the
+// SubscribeSheet token selector styling (active = accent, inactive = strong-rule
+// outline); the special chips are set apart by a leading glyph + their own tint.
+type Filter = Category | "All" | "Saved" | "For You";
 
 function FilterBar({
   present,
@@ -72,12 +98,30 @@ function FilterBar({
 }) {
   const chips: Filter[] = ["All", ...present];
   const savedActive = active === "Saved";
+  const forYouActive = active === "For You";
   return (
     <div
       role="tablist"
       aria-label={copy.feed.filterAria}
       className="flex gap-2 overflow-x-auto border-b-[0.5px] border-rule px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
+      {/* Leading, personalized For-You chip — accent-toned (a soft accent outline
+          when idle so it reads as "special", solid accent when active). */}
+      <button
+        type="button"
+        role="tab"
+        aria-selected={forYouActive}
+        aria-label={copy.feed.forYouAria}
+        onClick={() => onSelect("For You")}
+        className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-[0.5px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-[120ms] ${
+          forYouActive
+            ? "border-accent bg-accent-soft text-ink"
+            : "border-accent/40 text-accent hover:border-accent"
+        }`}
+      >
+        <SparkGlyph filled={forYouActive} />
+        {copy.feed.forYouFilter}
+      </button>
       {/* Leading, visually-distinct Saved chip — gold-toned, with a live count. */}
       <button
         type="button"
@@ -236,6 +280,90 @@ function SearchBar({
   );
 }
 
+// Inline interest picker for the For-You view — a tidy accent-tinted panel (not a
+// full-screen step). A short prompt + the four categories as toggle chips (reusing
+// the topic-chip styling) + a "Done" affordance. Only four chips, so they wrap
+// rather than scroll. Toggling persists immediately (lifted store); "Done" closes
+// the panel and is inert until at least one topic is chosen (an empty For-You feed
+// would have nothing to show).
+function InterestPicker({
+  hasInterest,
+  onToggle,
+  onDone,
+  isSet,
+}: {
+  hasInterest: (c: Category) => boolean;
+  onToggle: (c: Category) => void;
+  onDone: () => void;
+  isSet: boolean;
+}) {
+  return (
+    <div className="border-b-[0.5px] border-rule bg-accent-soft/30 px-4 py-3.5">
+      <p className="text-[12.5px] leading-snug text-ink-2">
+        {copy.feed.forYouPrompt}
+      </p>
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {CATEGORIES.map((c) => {
+          const on = hasInterest(c);
+          return (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onToggle(c)}
+              className={`shrink-0 whitespace-nowrap border-[0.5px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-[120ms] ${
+                on
+                  ? "border-accent bg-accent-soft text-ink"
+                  : "border-rule-strong text-ink-2 hover:text-ink"
+              }`}
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={!isSet}
+          className="text-[11px] font-medium uppercase tracking-[0.09em] text-accent transition-opacity active:opacity-70 disabled:text-ink-muted disabled:opacity-60"
+        >
+          {copy.feed.forYouDone}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Thin contextual strip above the For-You feed: the chosen topics (truncated) plus
+// a compact "Edit" affordance that reopens the picker.
+function ForYouHeader({
+  interests,
+  onEdit,
+}: {
+  interests: Category[];
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-rule px-4 py-2">
+      <span className="min-w-0 truncate text-[10.5px] uppercase tracking-[0.09em] text-ink-muted">
+        {copy.feed.forYouTopics}{" "}
+        <span className="normal-case tracking-normal text-ink-2">
+          {interests.join(", ")}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="shrink-0 text-[11px] font-medium uppercase tracking-[0.09em] text-accent transition-opacity active:opacity-70"
+      >
+        {copy.feed.forYouEdit}
+      </button>
+    </div>
+  );
+}
+
 // Subtle inline tone badge: a colored dot + uppercase word, tinted by sentiment
 // (Bullish = green, Bearish = red, Neutral = muted). Sits inside the meta line.
 function SentimentTag({ sentiment }: { sentiment: Sentiment }) {
@@ -340,7 +468,14 @@ function CompactRow({
   );
 }
 
-export function Feed({ onOpenSummary, saved }: FeedProps) {
+export function Feed({
+  onOpenSummary,
+  saved,
+  interests,
+  hasInterest,
+  onToggleInterest,
+  interestsSet,
+}: FeedProps) {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [error, setError] = useState(false);
   const [filter, setFilter] = useState<Filter>("All");
@@ -348,6 +483,15 @@ export function Feed({ onOpenSummary, saved }: FeedProps) {
   const [sentiment, setSentiment] = useState<SentimentFilter>("All");
   // Pure render state — filters the feed by title, composing with `filter`.
   const [query, setQuery] = useState("");
+  // For-You only: whether the inline interest picker is showing (vs the feed).
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Filter selection from the chip bar. Entering For-You with nothing chosen yet
+  // opens the picker; any other selection (or For-You with topics) shows the feed.
+  const handleSelectFilter = (f: Filter) => {
+    setFilter(f);
+    setPickerOpen(f === "For You" && !interestsSet);
+  };
   // Tracks whether we've ever loaded, so a failed *background* refresh never
   // blanks a feed we already have on screen.
   const loadedRef = useRef(false);
@@ -426,28 +570,41 @@ export function Feed({ onOpenSummary, saved }: FeedProps) {
     );
   }
 
-  // "Saved" is always a valid selection; for a category chip, fall back to "All"
-  // if a refetch dropped the only story of that category (so the topic filter
-  // never renders an empty list).
+  // "Saved" and "For You" are always valid selections; for a category chip, fall
+  // back to "All" if a refetch dropped the only story of that category (so the
+  // topic filter never renders an empty list).
   const activeFilter: Filter =
-    filter === "Saved"
-      ? "Saved"
+    filter === "Saved" || filter === "For You"
+      ? filter
       : filter !== "All" && !present.includes(filter)
         ? "All"
         : filter;
 
   const onSaved = activeFilter === "Saved";
+  const onForYou = activeFilter === "For You";
+  // Show the picker when For-You is active and either the user opened it (Edit /
+  // fresh entry) or there's nothing chosen yet (a safety net — For-You with no
+  // topics can only ever be the picker).
+  const showPicker = onForYou && (pickerOpen || !interestsSet);
+  // Search + tone act on a live feed: keep them in the For-You feed view, but hide
+  // them in the Saved list and while the picker is open (no feed to filter yet).
+  const showFilters = !onSaved && !showPicker;
 
   // Saved view shows the bookmarked list as-is (bypassing topic/tone/search).
-  // Otherwise compose: keep items matching the active category AND tone AND the
-  // search query (case-insensitive title match). Either way, the first survivor
-  // becomes the lead and the rest render as compact rows — identical layout.
+  // Otherwise compose: keep items matching the active topic (a single category, or
+  // — under For-You — any of the chosen interests) AND tone AND the search query
+  // (case-insensitive title match). Either way, the first survivor becomes the lead
+  // and the rest render as compact rows — identical layout.
   const q = query.trim().toLowerCase();
   const visible = onSaved
     ? saved
     : items.filter((item) => {
         const inCategory =
-          activeFilter === "All" || categoryOf(item) === activeFilter;
+          activeFilter === "All"
+            ? true
+            : onForYou
+              ? interests.includes(categoryOf(item))
+              : categoryOf(item) === activeFilter;
         const inSentiment = sentiment === "All" || sentimentOf(item) === sentiment;
         const inSearch = q === "" || item.title.toLowerCase().includes(q);
         return inCategory && inSentiment && inSearch;
@@ -455,44 +612,71 @@ export function Feed({ onOpenSummary, saved }: FeedProps) {
 
   const [lead, ...rest] = visible;
 
+  const emptyMessage = onSaved
+    ? copy.feed.savedEmpty
+    : onForYou
+      ? q || sentiment !== "All"
+        ? copy.feed.noMatches
+        : copy.feed.forYouEmpty
+      : q || activeFilter !== "All" || sentiment !== "All"
+        ? copy.feed.noMatches
+        : copy.feed.empty;
+
   return (
     <div>
       <StatRibbon headlines={items.length} />
 
       {/* Headline search + tone filter act on the live feed only — hidden in the
-          Saved view, which lists your bookmarks regardless of topic/tone/search. */}
-      {!onSaved && <SearchBar value={query} onChange={setQuery} />}
+          Saved view and while the For-You picker is open. */}
+      {showFilters && <SearchBar value={query} onChange={setQuery} />}
 
-      {/* Topic filter chips — leading Saved chip, then categories present now. */}
+      {/* Topic filter chips — leading For-You + Saved chips, then categories. */}
       <FilterBar
         present={present}
         active={activeFilter}
-        onSelect={setFilter}
+        onSelect={handleSelectFilter}
         savedCount={saved.length}
       />
 
-      {!onSaved && <SentimentBar active={sentiment} onSelect={setSentiment} />}
+      {showFilters && <SentimentBar active={sentiment} onSelect={setSentiment} />}
 
-      {visible.length === 0 ? (
-        <p className="px-4 py-10 text-[14px] text-ink-muted">
-          {onSaved
-            ? copy.feed.savedEmpty
-            : q || activeFilter !== "All" || sentiment !== "All"
-              ? copy.feed.noMatches
-              : copy.feed.empty}
-        </p>
+      {showPicker ? (
+        <InterestPicker
+          hasInterest={hasInterest}
+          onToggle={onToggleInterest}
+          onDone={() => setPickerOpen(false)}
+          isSet={interestsSet}
+        />
       ) : (
         <>
-          {/* Featured lead story — editorial hierarchy above the compact list. */}
-          <LeadStory item={lead} index={0} onOpen={onOpenSummary} />
+          {/* For-You feed: contextual topics strip + Edit affordance. */}
+          {onForYou && (
+            <ForYouHeader
+              interests={interests}
+              onEdit={() => setPickerOpen(true)}
+            />
+          )}
 
-          <ul className="px-4">
-            {rest.map((item, i) => (
-              <li key={item.id}>
-                <CompactRow item={item} index={i + 1} onOpen={onOpenSummary} />
-              </li>
-            ))}
-          </ul>
+          {visible.length === 0 ? (
+            <p className="px-4 py-10 text-[14px] text-ink-muted">{emptyMessage}</p>
+          ) : (
+            <>
+              {/* Featured lead story — editorial hierarchy above the compact list. */}
+              <LeadStory item={lead} index={0} onOpen={onOpenSummary} />
+
+              <ul className="px-4">
+                {rest.map((item, i) => (
+                  <li key={item.id}>
+                    <CompactRow
+                      item={item}
+                      index={i + 1}
+                      onOpen={onOpenSummary}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </>
       )}
     </div>

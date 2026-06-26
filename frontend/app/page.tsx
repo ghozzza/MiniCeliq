@@ -6,6 +6,7 @@ import { useMiniPay } from "@/hooks/useMiniPay";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useCenyBalance } from "@/hooks/useCenyBalance";
 import { useBookmarks } from "@/hooks/useBookmarks";
+import { useInterests } from "@/hooks/useInterests";
 import { Feed } from "@/components/Feed";
 import { Masthead } from "@/components/Masthead";
 import { BriefCard } from "@/components/BriefCard";
@@ -24,6 +25,14 @@ export default function HomePage() {
   // Single source of truth for saved articles — shared by the feed's Saved view
   // and the summary sheet's Save toggle, so a save from one reflects in the other.
   const { saved, isSaved, toggle: toggleSave } = useBookmarks();
+  // Single source of truth for the For-You topics — read by the feed's filter and
+  // the inline interest picker (consistent with how `saved` is lifted here).
+  const {
+    interests,
+    hasInterest,
+    toggle: toggleInterest,
+    isSet: interestsSet,
+  } = useInterests();
 
   const [openItem, setOpenItem] = useState<NewsItem | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -97,7 +106,14 @@ export default function HomePage() {
         onSubscribe={() => setShowSubscribe(true)}
       />
 
-      <Feed onOpenSummary={(item) => setOpenItem(item)} saved={saved} />
+      <Feed
+        onOpenSummary={(item) => setOpenItem(item)}
+        saved={saved}
+        interests={interests}
+        hasInterest={hasInterest}
+        onToggleInterest={toggleInterest}
+        interestsSet={interestsSet}
+      />
 
       {openItem && (
         <SummaryCard
