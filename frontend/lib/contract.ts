@@ -88,6 +88,13 @@ export const NEWS_SUBSCRIPTION_ABI = [
     inputs: [{ name: "plan", type: "uint8" }],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "promoEndsAt",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint64" }],
+  },
 ] as const;
 
 // ---- Reads ----
@@ -141,6 +148,19 @@ export async function readCenyReward(plan: Plan): Promise<bigint> {
     abi: NEWS_SUBSCRIPTION_ABI,
     functionName: "cenyReward",
     args: [plan],
+  });
+}
+
+// Unix timestamp (seconds) the on-chain launch promo ends. 0 = no promo /
+// contract unconfigured. FE-only read of an already-deployed view — used to
+// drive the masthead promo strip's visibility + real cutoff date.
+export async function readPromoEndsAt(): Promise<bigint> {
+  if (!CONTRACT_CONFIGURED) return 0n;
+  const client = getPublicClient();
+  return client.readContract({
+    address: SUBSCRIPTION_CONTRACT,
+    abi: NEWS_SUBSCRIPTION_ABI,
+    functionName: "promoEndsAt",
   });
 }
 

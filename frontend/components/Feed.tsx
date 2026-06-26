@@ -77,6 +77,44 @@ function FilterBar({
   );
 }
 
+// Compact, editorial headline search: a single thin-rule underlined field with a
+// clear (×) affordance once there's text. Filters the feed by title (case-
+// insensitive) and composes with the topic filter. Lightweight — no debounce
+// (the list is small), search is pure render state.
+function SearchBar({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="border-b-[0.5px] border-rule px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b-[0.5px] border-rule-strong pb-1.5">
+        <input
+          type="text"
+          inputMode="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={copy.feed.searchPlaceholder}
+          aria-label={copy.feed.searchAria}
+          className="min-w-0 flex-1 bg-transparent text-[14px] leading-none text-ink placeholder:text-ink-muted focus:outline-none"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label={copy.feed.searchClear}
+            className="-mr-1 shrink-0 px-1.5 py-0.5 text-[14px] leading-none text-ink-muted transition-colors active:text-ink"
+          >
+            ×
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Editorial source · category · time meta line. Time is compact + relative
 // (e.g. "3h ago") in a mono face to match the editorial number styling.
 function MetaLine({ item }: { item: NewsItem }) {
@@ -171,6 +209,8 @@ export function Feed({ onOpenSummary }: FeedProps) {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [error, setError] = useState(false);
   const [filter, setFilter] = useState<Filter>("All");
+  // Pure render state — filters the feed by title, composing with `filter`.
+  const [query, setQuery] = useState("");
   // Tracks whether we've ever loaded, so a failed *background* refresh never
   // blanks a feed we already have on screen.
   const loadedRef = useRef(false);
@@ -224,14 +264,6 @@ export function Feed({ onOpenSummary }: FeedProps) {
     return CATEGORIES.filter((c) => seen.has(c));
   }, [items]);
 
-  // The rendered list: all items, or just those in the selected category. The
-  // first item of the filtered list becomes the lead story.
-  const filtered = useMemo<NewsItem[]>(() => {
-    if (!items) return [];
-    if (filter === "All") return items;
-    return items.filter((item) => categoryOf(item) === filter);
-  }, [items, filter]);
-
   if (error) {
     return (
       <p className="px-4 py-10 text-[14px] text-ink-muted">{copy.feed.error}</p>
@@ -258,10 +290,18 @@ export function Feed({ onOpenSummary }: FeedProps) {
   }
 
   // If a refetch dropped the only story of the active category, the chip is gone
-  // — fall back to "All" so we never render an empty filtered list.
+  // — fall back to "All" so the category filter never renders an empty list.
   const activeFilter: Filter =
     filter !== "All" && !present.includes(filter) ? "All" : filter;
-  const visible = activeFilter === "All" ? items : filtered;
+
+  // Compose: keep items matching BOTH the active category AND the search query
+  // (case-insensitive title match), then the first survivor becomes the lead.
+  const q = query.trim().toLowerCase();
+  const visible = items.filter((item) => {
+    const inCategory = activeFilter === "All" || categoryOf(item) === activeFilter;
+    const inSearch = q === "" || item.title.toLowerCase().includes(q);
+    return inCategory && inSearch;
+  });
 
   const [lead, ...rest] = visible;
 
@@ -269,11 +309,16 @@ export function Feed({ onOpenSummary }: FeedProps) {
     <div>
       <StatRibbon headlines={items.length} />
 
+      {/* Headline search — composes with the topic filter below. */}
+      <SearchBar value={query} onChange={setQuery} />
+
       {/* Topic filter chips — only categories present in the current feed. */}
       <FilterBar present={present} active={activeFilter} onSelect={setFilter} />
 
       {visible.length === 0 ? (
-        <p className="px-4 py-10 text-[14px] text-ink-muted">{copy.feed.empty}</p>
+        <p className="px-4 py-10 text-[14px] text-ink-muted">
+          {q ? copy.feed.noMatches : copy.feed.empty}
+        </p>
       ) : (
         <>
           {/* Featured lead story — editorial hierarchy above the compact list. */}

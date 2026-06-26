@@ -38,7 +38,19 @@ const DEFAULT_NEWS_RSS_FEEDS = [
 // `CELO_CHAIN` switch decides which viem chain (and default RPC) to use.
 const DEFAULT_CELO_MAINNET_RPC = "https://forno.celo.org";
 
-const envSchema = z.object({
+// Public Celo MAINNET fallback RPCs for the event indexer, tried in order when
+// the primary CELO_RPC throws on a getLogs chunk (after retries). forno caps
+// getLogs at a 5000-block range, so the real fix is chunking — these are
+// belt-and-suspenders for transient forno hiccups. Mainnet only (ignored on
+// celoSepolia, where they'd point at the wrong chain). Override via
+// CELO_RPC_FALLBACKS; set to "" to disable.
+const DEFAULT_CELO_MAINNET_RPC_FALLBACKS = [
+  "https://rpc.ankr.com/celo",
+  "https://1rpc.io/celo",
+  "https://celo.drpc.org",
+].join(",");
+
+export const envSchema = z.object({
   // ---- Always optional with a sensible default ----
   PORT: z.coerce.number().int().positive().default(4000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -65,6 +77,10 @@ const envSchema = z.object({
   // mainnet (Proof of Ship requires a mainnet deployment).
   CELO_CHAIN: z.enum(["celo", "celoSepolia"]).default("celo"),
   CELO_RPC: z.string().url().default(DEFAULT_CELO_MAINNET_RPC),
+  // Comma-separated fallback RPC URLs the event indexer tries (in order) when the
+  // primary CELO_RPC throws on a getLogs chunk. Defaults to public Celo mainnet
+  // RPCs (used only when CELO_CHAIN=celo). Set to "" to disable fallbacks.
+  CELO_RPC_FALLBACKS: z.string().default(DEFAULT_CELO_MAINNET_RPC_FALLBACKS),
   // Deployed proxy address. EIP-55 trap (README §5): viem rejects a hand-recased
   // address — store it lowercase or via `cast to-check-sum-address`. Validated
   // as a 0x-prefixed 40-hex string here; viem applies the checksum at use.
@@ -75,6 +91,14 @@ const envSchema = z.object({
       .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 40-hex address")
       .optional()
   ),
+
+  // ---- Block explorer (OPTIONAL indexer fallback) ----
+  // Etherscan-v2 multichain logs API key. When set, the event indexer falls back
+  // to the explorer's getLogs if EVERY RPC fails for a chunk (forno's getLogs has
+  // been unreliable for historical ranges). Degrades gracefully (skipped) when
+  // unset — never hardcode a key. URL defaults to the Etherscan v2 endpoint.
+  BLOCK_EXPLORER_API_KEY: optionalNonEmptyString(),
+  BLOCK_EXPLORER_API_URL: z.string().url().default("https://api.etherscan.io/v2/api"),
 
   // ---- Free-tier AI-summary quota (server-side gate, README §7) ----
   // Free addresses get N summaries/day; on-chain `isActive(address)` overrides
@@ -112,6 +136,16 @@ const envSchema = z.object({
   // block so the indexer doesn't sweep the entire chain from genesis. 0 = from
   // genesis (slow — set this in deployed envs).
   EVENT_INDEXER_FROM_BLOCK: z.coerce.number().int().min(0).default(0),
+  // getLogs chunk size (blocks per request). forno (the default RPC) caps
+  // eth_getLogs at a 5000-BLOCK range and ERRORS (-32602) on anything larger —
+  // the previous hardcoded 45k made every call fail and silently indexed nothing.
+  // Default 5000 (forno-safe); kept ≤45k as an upper bound for RPCs with a bigger cap.
+  EVENT_INDEXER_CHUNK_BLOCKS: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(45_000)
+    .default(5_000),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -152,4 +186,8 @@ export function hasOpenRouter(): boolean {
 
 export function hasChain(): boolean {
   return Boolean(env.CELO_RPC && env.SUBSCRIPTION_CONTRACT_ADDRESS);
+}
+
+export function hasBlockExplorer(): boolean {
+  return Boolean(env.BLOCK_EXPLORER_API_KEY && env.BLOCK_EXPLORER_API_URL);
 }

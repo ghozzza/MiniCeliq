@@ -28,6 +28,11 @@ export const copy = {
     // Filter chip bar above the headline list.
     filterAll: "All",
     filterAria: "Filter headlines by topic",
+    // Headline search (composes with the topic filter).
+    searchPlaceholder: "Search headlines",
+    searchAria: "Search headlines by title",
+    searchClear: "Clear search",
+    noMatches: "No headlines match your search.",
   },
   summary: {
     title: "AI summary",

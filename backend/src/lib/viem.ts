@@ -35,6 +35,31 @@ export function publicClient(): PublicClient | null {
   return _client;
 }
 
+let _fallbacks: PublicClient[] | null = null;
+
+// Read-only fallback clients for the event indexer, built from CELO_RPC_FALLBACKS.
+// Only used when the primary CELO_RPC throws on a getLogs chunk. The fallback
+// defaults are Celo MAINNET RPCs, so they're only wired when CELO_CHAIN=celo —
+// pointing a mainnet RPC at sepolia (or vice-versa) would return wrong data.
+// The primary URL is excluded so we never just retry the same endpoint.
+export function fallbackClients(): PublicClient[] {
+  if (!hasChain()) return [];
+  if (_fallbacks) return _fallbacks;
+
+  const urls =
+    env.CELO_CHAIN === "celo"
+      ? env.CELO_RPC_FALLBACKS.split(",")
+          .map((u) => u.trim())
+          .filter((u) => u.length > 0 && u !== env.CELO_RPC)
+      : [];
+
+  const chain = getChain();
+  _fallbacks = urls.map((url) =>
+    createPublicClient({ chain, transport: http(url) })
+  );
+  return _fallbacks;
+}
+
 // EIP-55 trap (README §5): a hand-recased address breaks viem. `getAddress`
 // normalizes any valid casing to the canonical checksum. Returns null on a
 // malformed address rather than throwing, so route validation stays in control.

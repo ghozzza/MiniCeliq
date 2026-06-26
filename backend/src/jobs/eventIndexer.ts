@@ -1,22 +1,31 @@
 // Event indexer cron task (README §7, §12). Scans the chain for `Subscribed`
-// events in CHUNKED `eth_getLogs` calls (≤45k blocks per request — Celo/most
-// RPCs cap getLogs at 50k; 45k leaves headroom) and persists decoded rows into
-// Supabase for `/stats`.
+// events in CHUNKED `eth_getLogs` calls and persists decoded rows into Supabase
+// for `/stats`.
+//
+// Chunk size (EVENT_INDEXER_CHUNK_BLOCKS, default 5000): forno — the default RPC
+// — caps eth_getLogs at a 5000-BLOCK range and returns a -32602 ERROR for
+// anything larger. The previous hardcoded 45k chunk made every getLogs call fail;
+// the error was swallowed by the try/catch below and NOTHING was ever indexed.
+//
+// Resilience per chunk: try the primary RPC (with retries/backoff), then each
+// fallback RPC, then — only if BLOCK_EXPLORER_API_KEY is set — the explorer logs
+// API. A chunk that exhausts every source ABORTS the run (re-tried next tick from
+// the same resume point) rather than silently leaving a gap.
 //
 // Resume strategy: start from max(last-indexed block + 1, EVENT_INDEXER_FROM_BLOCK)
 // and walk forward to the current head. Gated in the scheduler on the chain being
-// configured AND Supabase being present (no point indexing into nothing).
-// Never throws to the scheduler.
+// configured AND Supabase being present. Never throws to the scheduler.
 
-import { parseAbiItem, type Log } from "viem";
-import { publicClient, contractAddress } from "../lib/viem";
-import { env } from "../config/env";
+import { parseAbiItem, type Log, type PublicClient } from "viem";
+import { publicClient, contractAddress, fallbackClients } from "../lib/viem";
+import {
+  fetchSubscribedLogsFromExplorer,
+  type NormalizedSubscribedLog,
+} from "../lib/explorerLogs";
+import { env, hasBlockExplorer } from "../config/env";
 import { supabase } from "../lib/supabase";
 import { storeEvents, getLastIndexedBlock } from "../services/analytics";
 import type { SubscribedEvent } from "../types";
-
-// Chunk size for eth_getLogs. Stay under the common 50k-block RPC cap (README §12).
-const CHUNK_BLOCKS = 45_000n;
 
 // Standalone event ABI item so viem can build the topic filter + decode args.
 // Signature MUST match the contract (verified against NewsSubscription.sol).
@@ -25,6 +34,12 @@ const SUBSCRIBED_EVENT = parseAbiItem(
 );
 
 type SubscribedLog = Log<bigint, number, false, typeof SUBSCRIBED_EVENT, true>;
+
+// Per-RPC retry policy for a single chunk (transient errors / rate limits).
+const MAX_ATTEMPTS_PER_RPC = 3;
+const RETRY_BASE_MS = 400;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function isIndexerRunnable(): boolean {
   return Boolean(publicClient() && contractAddress() && supabase());
@@ -50,6 +65,84 @@ async function blockTimeResolver() {
   };
 }
 
+// getLogs against one client with bounded retries + exponential backoff. Throws
+// the last error if all attempts fail (so the caller can try the next source).
+async function getLogsWithRetry(
+  client: PublicClient,
+  address: `0x${string}`,
+  from: bigint,
+  to: bigint
+): Promise<SubscribedLog[]> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_RPC; attempt++) {
+    try {
+      return (await client.getLogs({
+        address,
+        event: SUBSCRIBED_EVENT,
+        fromBlock: from,
+        toBlock: to,
+      })) as SubscribedLog[];
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_ATTEMPTS_PER_RPC) {
+        await sleep(RETRY_BASE_MS * 2 ** (attempt - 1));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// Fetch `Subscribed` logs for one chunk, trying every source in order:
+// primary RPC → fallback RPCs → (optional) explorer API. A legitimate empty
+// result (RPC returns []) short-circuits success — only THROWN errors advance to
+// the next source. Throws only when every source fails.
+async function fetchChunkLogs(
+  address: `0x${string}`,
+  from: bigint,
+  to: bigint
+): Promise<NormalizedSubscribedLog[]> {
+  const primary = publicClient();
+  const clients: PublicClient[] = primary
+    ? [primary, ...fallbackClients()]
+    : fallbackClients();
+
+  let lastErr: unknown;
+  for (const client of clients) {
+    try {
+      return await getLogsWithRetry(client, address, from, to);
+    } catch (err) {
+      lastErr = err;
+      console.warn(
+        `[EVENT_INDEXER] getLogs ${from}..${to} failed on an RPC: ${
+          err instanceof Error ? err.message : err
+        }`
+      );
+    }
+  }
+
+  if (hasBlockExplorer()) {
+    try {
+      console.warn(
+        `[EVENT_INDEXER] all RPCs failed for ${from}..${to}, trying explorer API.`
+      );
+      return await fetchSubscribedLogsFromExplorer(address, from, to);
+    } catch (err) {
+      lastErr = err;
+      console.warn(
+        `[EVENT_INDEXER] explorer fallback failed for ${from}..${to}: ${
+          err instanceof Error ? err.message : err
+        }`
+      );
+    }
+  }
+
+  throw new Error(
+    `all log sources failed for ${from}..${to}: ${
+      lastErr instanceof Error ? lastErr.message : lastErr
+    }`
+  );
+}
+
 export async function runEventIndexer(): Promise<void> {
   if (!isIndexerRunnable()) {
     console.log("[EVENT_INDEXER] skipped — chain or Supabase not configured.");
@@ -59,6 +152,8 @@ export async function runEventIndexer(): Promise<void> {
   const client = publicClient();
   const address = contractAddress();
   if (!client || !address) return;
+
+  const chunk = BigInt(env.EVENT_INDEXER_CHUNK_BLOCKS);
 
   try {
     const head = await client.getBlockNumber();
@@ -79,14 +174,9 @@ export async function runEventIndexer(): Promise<void> {
     let totalStored = 0;
 
     while (from <= head) {
-      const to = from + CHUNK_BLOCKS - 1n > head ? head : from + CHUNK_BLOCKS - 1n;
+      const to = from + chunk - 1n > head ? head : from + chunk - 1n;
 
-      const logs = (await client.getLogs({
-        address,
-        event: SUBSCRIBED_EVENT,
-        fromBlock: from,
-        toBlock: to,
-      })) as SubscribedLog[];
+      const logs = await fetchChunkLogs(address, from, to);
 
       if (logs.length > 0) {
         const events: SubscribedEvent[] = [];
