@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useMiniPay } from "@/hooks/useMiniPay";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useCenyBalance } from "@/hooks/useCenyBalance";
+import { useBookmarks } from "@/hooks/useBookmarks";
 import { Feed } from "@/components/Feed";
 import { Masthead } from "@/components/Masthead";
 import { BriefCard } from "@/components/BriefCard";
@@ -20,6 +21,9 @@ export default function HomePage() {
   const { address, isMiniPay, isLoading, preferred } = useMiniPay();
   const { isActive, expiry, refresh: refreshSub } = useSubscription(address);
   const { balance: cenyBalance, refresh: refreshCeny } = useCenyBalance(address);
+  // Single source of truth for saved articles — shared by the feed's Saved view
+  // and the summary sheet's Save toggle, so a save from one reflects in the other.
+  const { saved, isSaved, toggle: toggleSave } = useBookmarks();
 
   const [openItem, setOpenItem] = useState<NewsItem | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -93,13 +97,15 @@ export default function HomePage() {
         onSubscribe={() => setShowSubscribe(true)}
       />
 
-      <Feed onOpenSummary={(item) => setOpenItem(item)} />
+      <Feed onOpenSummary={(item) => setOpenItem(item)} saved={saved} />
 
       {openItem && (
         <SummaryCard
           key={openItem.id}
           item={openItem}
           address={address}
+          isSaved={isSaved}
+          onToggleSave={toggleSave}
           onClose={() => setOpenItem(null)}
           onGated={() => {
             setOpenItem(null);

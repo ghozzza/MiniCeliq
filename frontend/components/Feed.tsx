@@ -16,6 +16,8 @@ import { formatRelative } from "@/lib/time";
 
 interface FeedProps {
   onOpenSummary: (item: NewsItem) => void;
+  // Saved articles (lifted to HomePage). Powers the "Saved" filter view + count.
+  saved: NewsItem[];
 }
 
 // Thin hairline band of calm, mostly-static figures under the masthead.
@@ -34,27 +36,69 @@ function StatRibbon({ headlines }: { headlines: number }) {
   );
 }
 
-// Horizontal, scrollable filter chip bar. "All" plus only the categories that
-// are actually present in the current items. Mirrors the SubscribeSheet token
-// selector chip styling (active = accent, inactive = strong-rule outline).
-type Filter = Category | "All";
+// Bookmark glyph — outline by default, filled when the Saved view is active.
+function BookmarkGlyph({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3 w-3"
+      aria-hidden
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinejoin="round"
+    >
+      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z" />
+    </svg>
+  );
+}
+
+// Horizontal, scrollable filter chip bar. A leading, gold-toned "Saved" chip
+// (with a count) precedes "All" plus only the categories actually present in the
+// current items. The topic chips mirror the SubscribeSheet token selector styling
+// (active = accent, inactive = strong-rule outline); Saved is set apart in gold.
+type Filter = Category | "All" | "Saved";
 
 function FilterBar({
   present,
   active,
   onSelect,
+  savedCount,
 }: {
   present: Category[];
   active: Filter;
   onSelect: (f: Filter) => void;
+  savedCount: number;
 }) {
   const chips: Filter[] = ["All", ...present];
+  const savedActive = active === "Saved";
   return (
     <div
       role="tablist"
       aria-label={copy.feed.filterAria}
       className="flex gap-2 overflow-x-auto border-b-[0.5px] border-rule px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
+      {/* Leading, visually-distinct Saved chip — gold-toned, with a live count. */}
+      <button
+        type="button"
+        role="tab"
+        aria-selected={savedActive}
+        aria-label={copy.feed.savedAria}
+        onClick={() => onSelect("Saved")}
+        className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-[0.5px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-[120ms] ${
+          savedActive
+            ? "border-gold bg-gold/[0.12] text-ink"
+            : "border-rule-strong text-ink-2 hover:text-ink"
+        }`}
+      >
+        <BookmarkGlyph filled={savedActive} />
+        {copy.feed.savedFilter}
+        {savedCount > 0 && (
+          <span className="font-plex-mono num text-[11px] text-ink-muted">
+            {savedCount}
+          </span>
+        )}
+      </button>
       {chips.map((chip) => {
         const isActive = chip === active;
         return (
@@ -296,7 +340,7 @@ function CompactRow({
   );
 }
 
-export function Feed({ onOpenSummary }: FeedProps) {
+export function Feed({ onOpenSummary, saved }: FeedProps) {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [error, setError] = useState(false);
   const [filter, setFilter] = useState<Filter>("All");
@@ -382,20 +426,32 @@ export function Feed({ onOpenSummary }: FeedProps) {
     );
   }
 
-  // If a refetch dropped the only story of the active category, the chip is gone
-  // — fall back to "All" so the category filter never renders an empty list.
+  // "Saved" is always a valid selection; for a category chip, fall back to "All"
+  // if a refetch dropped the only story of that category (so the topic filter
+  // never renders an empty list).
   const activeFilter: Filter =
-    filter !== "All" && !present.includes(filter) ? "All" : filter;
+    filter === "Saved"
+      ? "Saved"
+      : filter !== "All" && !present.includes(filter)
+        ? "All"
+        : filter;
 
-  // Compose: keep items matching the active category AND tone AND the search
-  // query (case-insensitive title match); the first survivor becomes the lead.
+  const onSaved = activeFilter === "Saved";
+
+  // Saved view shows the bookmarked list as-is (bypassing topic/tone/search).
+  // Otherwise compose: keep items matching the active category AND tone AND the
+  // search query (case-insensitive title match). Either way, the first survivor
+  // becomes the lead and the rest render as compact rows — identical layout.
   const q = query.trim().toLowerCase();
-  const visible = items.filter((item) => {
-    const inCategory = activeFilter === "All" || categoryOf(item) === activeFilter;
-    const inSentiment = sentiment === "All" || sentimentOf(item) === sentiment;
-    const inSearch = q === "" || item.title.toLowerCase().includes(q);
-    return inCategory && inSentiment && inSearch;
-  });
+  const visible = onSaved
+    ? saved
+    : items.filter((item) => {
+        const inCategory =
+          activeFilter === "All" || categoryOf(item) === activeFilter;
+        const inSentiment = sentiment === "All" || sentimentOf(item) === sentiment;
+        const inSearch = q === "" || item.title.toLowerCase().includes(q);
+        return inCategory && inSentiment && inSearch;
+      });
 
   const [lead, ...rest] = visible;
 
@@ -403,20 +459,27 @@ export function Feed({ onOpenSummary }: FeedProps) {
     <div>
       <StatRibbon headlines={items.length} />
 
-      {/* Headline search — composes with the topic filter below. */}
-      <SearchBar value={query} onChange={setQuery} />
+      {/* Headline search + tone filter act on the live feed only — hidden in the
+          Saved view, which lists your bookmarks regardless of topic/tone/search. */}
+      {!onSaved && <SearchBar value={query} onChange={setQuery} />}
 
-      {/* Topic filter chips — only categories present in the current feed. */}
-      <FilterBar present={present} active={activeFilter} onSelect={setFilter} />
+      {/* Topic filter chips — leading Saved chip, then categories present now. */}
+      <FilterBar
+        present={present}
+        active={activeFilter}
+        onSelect={setFilter}
+        savedCount={saved.length}
+      />
 
-      {/* Tone filter — a distinct, color-coded dimension below the topic chips. */}
-      <SentimentBar active={sentiment} onSelect={setSentiment} />
+      {!onSaved && <SentimentBar active={sentiment} onSelect={setSentiment} />}
 
       {visible.length === 0 ? (
         <p className="px-4 py-10 text-[14px] text-ink-muted">
-          {q || activeFilter !== "All" || sentiment !== "All"
-            ? copy.feed.noMatches
-            : copy.feed.empty}
+          {onSaved
+            ? copy.feed.savedEmpty
+            : q || activeFilter !== "All" || sentiment !== "All"
+              ? copy.feed.noMatches
+              : copy.feed.empty}
         </p>
       ) : (
         <>

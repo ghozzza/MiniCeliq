@@ -12,17 +12,40 @@ import { formatPublished } from "@/lib/time";
 interface SummaryCardProps {
   item: NewsItem;
   address: string | null;
+  // Saved-articles store (lifted to HomePage) — reflects + flips this article.
+  isSaved: (id: string) => boolean;
+  onToggleSave: (item: NewsItem) => void;
   onClose: () => void;
   // Called when the server reports the free quota is exhausted.
   onGated: () => void;
 }
 
+// Bookmark glyph — outline by default, filled when the article is saved.
+function BookmarkGlyph({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5"
+      aria-hidden
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinejoin="round"
+    >
+      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z" />
+    </svg>
+  );
+}
+
 export function SummaryCard({
   item,
   address,
+  isSaved,
+  onToggleSave,
   onClose,
   onGated,
 }: SummaryCardProps) {
+  const saved = isSaved(item.id);
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -142,22 +165,36 @@ export function SummaryCard({
           </p>
         )}
 
-        {hasUrl && (
-          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-            <button
-              onClick={share}
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
-            >
-              {copy.summary.share}
-            </button>
-            <button
-              onClick={copyLink}
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
-            >
-              {copied ? copy.summary.copied : copy.summary.copyLink}
-            </button>
-          </div>
-        )}
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+          {/* Save / Saved toggle — always available (even without an article URL). */}
+          <button
+            onClick={() => onToggleSave(item)}
+            aria-pressed={saved}
+            aria-label={saved ? copy.summary.unsaveAria : copy.summary.saveAria}
+            className={`inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] transition-colors active:text-ink ${
+              saved ? "text-ink" : "text-accent"
+            }`}
+          >
+            <BookmarkGlyph filled={saved} />
+            {saved ? copy.summary.saved : copy.summary.save}
+          </button>
+          {hasUrl && (
+            <>
+              <button
+                onClick={share}
+                className="inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
+              >
+                {copy.summary.share}
+              </button>
+              <button
+                onClick={copyLink}
+                className="inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.09em] text-accent transition-colors active:text-ink"
+              >
+                {copied ? copy.summary.copied : copy.summary.copyLink}
+              </button>
+            </>
+          )}
+        </div>
 
         <button
           onClick={onClose}

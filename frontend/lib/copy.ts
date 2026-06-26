@@ -37,6 +37,10 @@ export const copy = {
     searchAria: "Search headlines by title",
     searchClear: "Clear search",
     noMatches: "No headlines match these filters.",
+    // Saved articles — a leading filter chip that swaps in your bookmarked stories.
+    savedFilter: "Saved",
+    savedAria: "Show saved articles",
+    savedEmpty: "No saved articles yet — tap Save on a story.",
   },
   summary: {
     title: "AI summary",
@@ -48,6 +52,11 @@ export const copy = {
     share: "Share",
     copyLink: "Copy original link",
     copied: "Original link copied ✓",
+    // Save / bookmark toggle — keeps a story in your Saved list.
+    save: "Save",
+    saved: "Saved",
+    saveAria: "Save this article",
+    unsaveAria: "Remove from saved",
   },
   // Morning Brief — a once-daily AI digest, a perk for on-chain subscribers.
   brief: {
