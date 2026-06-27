@@ -68,9 +68,19 @@ create table if not exists public.daily_brief (
   generated_at timestamptz not null default now()
 );
 
+-- 6) indexer_cursor — durable "last fully-scanned block" per named indexer so the
+--    event indexer resumes from real forward progress (not from max(event block)),
+--    advancing even across empty ranges and surviving restarts. Upsert on name.
+create table if not exists public.indexer_cursor (
+  name               text primary key,
+  last_scanned_block bigint not null,
+  updated_at         timestamptz not null default now()
+);
+
 -- RLS: enable on all tables, add NO policies → only the service-role key (the backend) can touch them.
 alter table public.news_cache        enable row level security;
 alter table public.news_summaries    enable row level security;
 alter table public.summary_views     enable row level security;
 alter table public.subscribed_events enable row level security;
 alter table public.daily_brief       enable row level security;
+alter table public.indexer_cursor    enable row level security;

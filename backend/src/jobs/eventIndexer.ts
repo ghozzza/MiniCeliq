@@ -24,8 +24,21 @@ import {
 } from "../lib/explorerLogs";
 import { env, hasBlockExplorer } from "../config/env";
 import { supabase } from "../lib/supabase";
-import { storeEvents, getLastIndexedBlock } from "../services/analytics";
+import {
+  storeEvents,
+  getLastIndexedBlock,
+  getScannedBlock,
+  setScannedBlock,
+} from "../services/analytics";
 import type { SubscribedEvent } from "../types";
+
+// Named cursor for this indexer's last fully-scanned block (audit L2).
+const CURSOR_NAME = "subscribed";
+
+// In-flight guard: cron fires every N minutes, but a backfill / idle re-scan can
+// outrun the interval. A second concurrent run would just hammer the RPCs over
+// the same range, so we skip it (audit L2).
+let running = false;
 
 // Standalone event ABI item so viem can build the topic filter + decode args.
 // Signature MUST match the contract (verified against NewsSubscription.sol).
@@ -53,15 +66,14 @@ async function blockTimeResolver() {
   return async (blockNumber: bigint): Promise<string> => {
     const hit = cache.get(blockNumber);
     if (hit) return hit;
-    if (!client) return new Date().toISOString();
-    try {
-      const block = await client.getBlock({ blockNumber });
-      const iso = new Date(Number(block.timestamp) * 1000).toISOString();
-      cache.set(blockNumber, iso);
-      return iso;
-    } catch {
-      return new Date().toISOString();
-    }
+    if (!client) throw new Error("no client to resolve block time");
+    // THROW on failure rather than falling back to wall-clock `now()`: a wrong
+    // block_time silently mis-buckets txPerDay in /stats. Aborting the chunk lets
+    // it retry next tick with a correct timestamp (audit N1).
+    const block = await client.getBlock({ blockNumber });
+    const iso = new Date(Number(block.timestamp) * 1000).toISOString();
+    cache.set(blockNumber, iso);
+    return iso;
   };
 }
 
@@ -148,21 +160,32 @@ export async function runEventIndexer(): Promise<void> {
     console.log("[EVENT_INDEXER] skipped — chain or Supabase not configured.");
     return;
   }
+  if (running) {
+    console.log("[EVENT_INDEXER] skipped — previous run still in progress.");
+    return;
+  }
+  running = true;
 
   const client = publicClient();
   const address = contractAddress();
-  if (!client || !address) return;
+  if (!client || !address) {
+    running = false;
+    return;
+  }
 
   const chunk = BigInt(env.EVENT_INDEXER_CHUNK_BLOCKS);
 
   try {
     const head = await client.getBlockNumber();
 
-    const lastIndexed = await getLastIndexedBlock();
+    // Resume from the dedicated scanned-block cursor when present (it advances on
+    // every chunk, even empty ones); fall back to the max indexed event block for
+    // back-compat (pre-migration), then to the configured FROM_BLOCK (audit L2).
+    const persisted = await getScannedBlock(CURSOR_NAME);
+    const lastEvent = persisted === null ? await getLastIndexedBlock() : null;
+    const base = persisted ?? lastEvent;
     const resumeFrom =
-      lastIndexed !== null
-        ? BigInt(lastIndexed) + 1n
-        : BigInt(env.EVENT_INDEXER_FROM_BLOCK);
+      base !== null ? BigInt(base) + 1n : BigInt(env.EVENT_INDEXER_FROM_BLOCK);
 
     if (resumeFrom > head) {
       console.log(`[EVENT_INDEXER] up to date (head=${head}).`);
@@ -198,6 +221,12 @@ export async function runEventIndexer(): Promise<void> {
         totalStored += await storeEvents(events);
       }
 
+      // Advance the durable cursor only AFTER the chunk is fully persisted (or was
+      // empty). storeEvents throws on a write failure, so a failed chunk aborts the
+      // run here and the cursor stays behind the gap — no silent event loss, and
+      // empty ranges are never re-scanned next tick (audit M2 + L2).
+      await setScannedBlock(CURSOR_NAME, Number(to));
+
       from = to + 1n;
     }
 
@@ -209,5 +238,7 @@ export async function runEventIndexer(): Promise<void> {
       "[EVENT_INDEXER] failed:",
       err instanceof Error ? err.message : err
     );
+  } finally {
+    running = false;
   }
 }

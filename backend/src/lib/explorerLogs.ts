@@ -84,6 +84,17 @@ export async function fetchSubscribedLogsFromExplorer(
     throw new Error(`explorer error: ${json.message} — ${String(json.result)}`);
   }
 
+  // Etherscan-v2 logs caps at 1000 records per call. If we hit it, the chunk is
+  // truncated — THROW instead of silently returning a partial set, so the caller
+  // doesn't advance the cursor over dropped events (audit N2). For this app's
+  // volume a 5000-block chunk should never approach 1000; if it does, shrink
+  // EVENT_INDEXER_CHUNK_BLOCKS or add explorer pagination.
+  if (json.result.length >= 1000) {
+    throw new Error(
+      `explorer returned the 1000-log cap for ${fromBlock}..${toBlock} (range too wide — likely truncated)`
+    );
+  }
+
   return json.result.map((log) => {
     const decoded = decodeEventLog({
       abi: [SUBSCRIBED_EVENT],
