@@ -23,6 +23,10 @@ import {
 // tone) and the search box then narrow it. Default "Latest".
 type Mode = "Latest" | "For You" | "Saved";
 
+// How many headlines the Latest / For You feeds render per page. The Saved view
+// is a short personal list and renders all at once.
+const PAGE_SIZE = 10;
+
 interface FeedProps {
   onOpenSummary: (item: NewsItem) => void;
   // Saved articles (lifted to HomePage). Powers the "Saved" filter view + count.
@@ -434,6 +438,56 @@ function CompactRow({
   );
 }
 
+// Editorial pager for the Latest / For You feeds: Previous / Next buttons framing
+// a mono "Page X of Y" indicator. Previous is inert on page 1, Next on the last.
+function Pagination({
+  page,
+  totalPages,
+  onPrev,
+  onNext,
+}: {
+  page: number;
+  totalPages: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const atStart = page <= 1;
+  const atEnd = page >= totalPages;
+  return (
+    <nav
+      aria-label={copy.feed.modeAria}
+      className="flex items-center justify-between gap-3 border-t-[0.5px] border-rule px-4 py-4"
+    >
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={atStart}
+        aria-label={copy.feed.prevAria}
+        className="flex items-center gap-1.5 border-[0.5px] border-rule-strong px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-2 transition-colors duration-[120ms] active:bg-accent-soft/40 disabled:border-rule disabled:text-ink-muted disabled:opacity-50"
+      >
+        <span aria-hidden>←</span>
+        {copy.feed.prev}
+      </button>
+      <span className="text-[11px] uppercase tracking-[0.09em] text-ink-muted">
+        {copy.feed.page}{" "}
+        <span className="font-plex-mono num text-ink-2">{page}</span>{" "}
+        {copy.feed.pageOf}{" "}
+        <span className="font-plex-mono num text-ink-2">{totalPages}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={atEnd}
+        aria-label={copy.feed.nextAria}
+        className="flex items-center gap-1.5 border-[0.5px] border-rule-strong px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-2 transition-colors duration-[120ms] active:bg-accent-soft/40 disabled:border-rule disabled:text-ink-muted disabled:opacity-50"
+      >
+        {copy.feed.next}
+        <span aria-hidden>→</span>
+      </button>
+    </nav>
+  );
+}
+
 export function Feed({
   onOpenSummary,
   saved,
@@ -456,6 +510,13 @@ export function Feed({
   const [sheetOpen, setSheetOpen] = useState(false);
   // For-You only: whether the inline interest picker is showing (vs the feed).
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Current page for the paginated Latest / For You feeds (1-based). Reset to 1
+  // whenever the visible list could change shape (see effect below) so we never
+  // land on an out-of-range page.
+  const [page, setPage] = useState(1);
+  // Anchor for scroll-to-top on page change (the whole window scrolls — there's
+  // no inner scroll container — so we scroll the feed root into view).
+  const topRef = useRef<HTMLDivElement>(null);
 
   // Mode switch from the tabs. Entering For-You with nothing chosen yet opens the
   // interest picker; any other switch (or For-You with topics) shows the feed.
@@ -464,6 +525,13 @@ export function Feed({
     setMode(m);
     setSheetOpen(false);
     setPickerOpen(m === "For You" && !interestsSet);
+  };
+  // Change page + return the feed to the top so fresh items are in view. The root
+  // top position doesn't shift on a setState, so scrolling to it before re-render
+  // is fine.
+  const handlePageChange = (next: number) => {
+    setPage(next);
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   // Tracks whether we've ever loaded, so a failed *background* refresh never
   // blanks a feed we already have on screen.
@@ -509,6 +577,13 @@ export function Feed({
     };
   }, []);
 
+  // Whenever the view, filters, or search change, the filtered list changes shape,
+  // so snap back to page 1 (never strand the user on a now-empty page). The 90s
+  // background refresh doesn't touch these deps, so it won't yank the page.
+  useEffect(() => {
+    setPage(1);
+  }, [mode, category, sentiment, query]);
+
   if (error) {
     return (
       <p className="px-4 py-10 text-[14px] text-ink-muted">{copy.feed.error}</p>
@@ -552,8 +627,7 @@ export function Feed({
   // Saved view shows the bookmarked list as-is (bypassing category/tone/search).
   // Otherwise compose: keep items matching the category (a single chosen one, or —
   // under For-You — any of the chosen interests) AND tone AND the search query
-  // (case-insensitive title match). Either way, the first survivor becomes the lead
-  // and the rest render as compact rows — identical layout.
+  // (case-insensitive title match).
   const q = query.trim().toLowerCase();
   const visible = onSaved
     ? saved
@@ -566,7 +640,20 @@ export function Feed({
         return inCategory && inSentiment && inSearch;
       });
 
-  const [lead, ...rest] = visible;
+  // Pagination — Latest / For You page the filtered list 10 at a time. Saved is a
+  // short personal list and renders all at once (Fix A: every saved item is a
+  // CompactRow — no LeadStory / drop cap). `safePage` clamps in case the list
+  // shrank before the reset effect runs, so we never index past the end.
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = onSaved
+    ? visible
+    : visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  // Lead-story treatment only for the very first item of page 1 in Latest/For You.
+  // Saved + every page 2+ is a flat compact list.
+  const showLead = !onSaved && safePage === 1 && pageItems.length > 0;
+  const compactItems = showLead ? pageItems.slice(1) : pageItems;
+  const showPager = !onSaved && totalPages > 1;
 
   const emptyMessage = onSaved
     ? copy.feed.savedEmpty
@@ -579,7 +666,7 @@ export function Feed({
         : copy.feed.empty;
 
   return (
-    <div>
+    <div ref={topRef} className="scroll-mt-2">
       <StatRibbon headlines={items.length} />
 
       {/* View selector — Latest · For You · Saved. */}
@@ -620,20 +707,37 @@ export function Feed({
             <p className="px-4 py-10 text-[14px] text-ink-muted">{emptyMessage}</p>
           ) : (
             <>
-              {/* Featured lead story — editorial hierarchy above the compact list. */}
-              <LeadStory item={lead} index={0} onOpen={onOpenSummary} />
+              {/* Featured lead story — only on page 1 of Latest / For You. The Saved
+                  list and every page 2+ skip it for a flat compact list. */}
+              {showLead && (
+                <LeadStory
+                  item={pageItems[0]}
+                  index={0}
+                  onOpen={onOpenSummary}
+                />
+              )}
 
               <ul className="px-4">
-                {rest.map((item, i) => (
+                {compactItems.map((item, i) => (
                   <li key={item.id}>
                     <CompactRow
                       item={item}
-                      index={i + 1}
+                      index={showLead ? i + 1 : i}
                       onOpen={onOpenSummary}
                     />
                   </li>
                 ))}
               </ul>
+
+              {/* Editorial pager — Latest / For You only, hidden at a single page. */}
+              {showPager && (
+                <Pagination
+                  page={safePage}
+                  totalPages={totalPages}
+                  onPrev={() => handlePageChange(safePage - 1)}
+                  onNext={() => handlePageChange(safePage + 1)}
+                />
+              )}
             </>
           )}
         </>

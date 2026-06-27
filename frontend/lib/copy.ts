@@ -55,6 +55,14 @@ export const copy = {
     forYouTopics: "Your topics",
     forYouEdit: "Edit topics",
     forYouEmpty: "Nothing in your topics right now. Tap Edit to follow more.",
+    // Pagination — the Latest / For You feeds page 10 headlines at a time.
+    // Rendered as: `${page} N ${pageOf} M` → "Page 1 of 5".
+    prev: "Previous",
+    next: "Next",
+    page: "Page",
+    pageOf: "of",
+    prevAria: "Previous page",
+    nextAria: "Next page",
   },
   summary: {
     title: "AI summary",
