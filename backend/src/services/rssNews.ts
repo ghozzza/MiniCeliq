@@ -253,6 +253,31 @@ export async function getNews(limit = 50): Promise<NewsItem[]> {
   return fresh.slice(0, limit);
 }
 
+// Retention windows (audit L6) — keep the cache tables from growing unbounded.
+const NEWS_RETENTION_DAYS = 14; // news_cache (only the newest ~50 are ever served)
+const SUMMARY_RETENTION_DAYS = 30; // news_summaries
+const VIEWS_RETENTION_DAYS = 7; // summary_views (only "today" matters for quota)
+
+// Delete stale rows from the cache tables. Best-effort: a failure is logged, never
+// thrown (called from the ingest cron). No-op without Supabase. (audit L6)
+export async function pruneOldNews(): Promise<void> {
+  const db = supabase();
+  if (!db) return;
+  const now = Date.now();
+  const iso = (days: number) => new Date(now - days * 86_400_000).toISOString();
+  const day = (days: number) => iso(days).slice(0, 10);
+
+  const results = await Promise.all([
+    db.from(CACHE_TABLE).delete().lt("published_at", iso(NEWS_RETENTION_DAYS)),
+    db.from("news_summaries").delete().lt("created_at", iso(SUMMARY_RETENTION_DAYS)),
+    db.from("summary_views").delete().lt("view_day", day(VIEWS_RETENTION_DAYS)),
+  ]);
+  const labels = ["news_cache", "news_summaries", "summary_views"];
+  results.forEach((r, i) => {
+    if (r.error) console.warn(`[NEWS:RSS] ${labels[i]} prune failed: ${r.error.message}`);
+  });
+}
+
 // Lookup a single cached article by id (used by aiSummary to title the prompt).
 export async function getArticleById(id: string): Promise<NewsItem | null> {
   const db = supabase();

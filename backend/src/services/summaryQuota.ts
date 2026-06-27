@@ -122,4 +122,10 @@ function recordMemory(addressLower: string, day: string, articleId: string): voi
   const set = memoryViews.get(key) ?? new Set<string>();
   set.add(articleId);
   memoryViews.set(key, set);
+  // Drop stale days so the in-memory fallback map can't grow without bound — only
+  // today's keys matter for the daily quota (audit L6).
+  const todaySuffix = `:${day}`;
+  for (const k of memoryViews.keys()) {
+    if (!k.endsWith(todaySuffix)) memoryViews.delete(k);
+  }
 }
