@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppError } from "../lib/errors";
 import { summarizeArticle } from "../services/aiSummary";
 import { checkQuota, recordView } from "../services/summaryQuota";
+import { summarizeLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
@@ -13,17 +14,19 @@ const bodySchema = z.object({
   // (isActive override) + free-tier quota. README §7 trust model: low-risk
   // address-spoofing is accepted for news content.
   address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x address"),
-  // Optional title hint for articles not yet in the cache (fresh client payload).
-  title: z.string().max(512).optional(),
+  // NOTE: a client-supplied `title` is intentionally NOT accepted/used anymore.
+  // Summaries are only generated for articles the server already cached, so an
+  // arbitrary id+title can no longer force a paid LLM generation (audit M1).
 });
 
 // POST /api/news/summarize — gated AI summary (README §7).
 //   - Free tier: SUMMARY_FREE_DAILY_LIMIT distinct articles/day per address.
 //   - On-chain isActive(address) → unlimited (server read-gate).
 //   - Over quota → HTTP 402 { code: "summary_quota_exceeded" }.
-router.post("/summarize", async (req, res, next) => {
+//   - Per-IP `summarizeLimiter` caps paid-LLM abuse (audit M1).
+router.post("/summarize", summarizeLimiter, async (req, res, next) => {
   try {
-    const { articleId, address, title } = bodySchema.parse(req.body);
+    const { articleId, address } = bodySchema.parse(req.body);
 
     const quota = await checkQuota(address, articleId);
     if (!quota.allowed) {
@@ -34,7 +37,7 @@ router.post("/summarize", async (req, res, next) => {
       );
     }
 
-    const record = await summarizeArticle(articleId, title);
+    const record = await summarizeArticle(articleId);
 
     // Consume quota only for free-tier first views of an article. Premium
     // (unlimited) and re-views of an already-counted article don't consume.
