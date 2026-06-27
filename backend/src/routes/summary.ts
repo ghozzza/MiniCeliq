@@ -45,6 +45,8 @@ router.post("/summarize", async (req, res, next) => {
     res.json({
       articleId: record.articleId,
       summary: record.summary,
+      artinya: record.artinya,
+      sentiment: record.sentiment,
       model: record.model,
       createdAt: record.createdAt,
       quota: {

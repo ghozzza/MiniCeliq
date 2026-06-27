@@ -20,6 +20,12 @@ export interface NewsItem {
 
 export interface SummaryResult {
   summary: string;
+  // "What it means" implication block — why the story matters for the reader.
+  // Absent on the mock / legacy-cached summaries (then the UI hides the block).
+  artinya?: string;
+  // LLM-classified market tone. More accurate than the headline-keyword guess,
+  // so the card prefers it for the sentiment badge once the summary loads.
+  sentiment?: "Bullish" | "Bearish" | "Neutral";
   // True when the server gated this request (free quota exhausted) → show paywall.
   gated?: boolean;
   // Remaining free summaries for today, if the server reports it.
@@ -119,6 +125,8 @@ export async function fetchSummary(
 
     const data = (await res.json()) as {
       summary: string;
+      artinya?: string;
+      sentiment?: "Bullish" | "Bearish" | "Neutral";
       quota?: { unlimited: boolean; used: number | null; limit: number | null };
     };
     const q = data.quota;
@@ -126,7 +134,13 @@ export async function fetchSummary(
       q && !q.unlimited && q.limit != null && q.used != null
         ? Math.max(0, q.limit - q.used)
         : undefined;
-    return { summary: data.summary, remaining };
+    return {
+      summary: data.summary,
+      // Drop empty strings so the UI treats "no implication" as absent.
+      artinya: data.artinya?.trim() ? data.artinya : undefined,
+      sentiment: data.sentiment,
+      remaining,
+    };
   } catch {
     return { summary: MOCK_SUMMARY };
   }

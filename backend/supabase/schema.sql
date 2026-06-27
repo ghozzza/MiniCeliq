@@ -17,12 +17,19 @@ create table if not exists public.news_cache (
 create index if not exists news_cache_published_at_idx on public.news_cache (published_at desc);
 
 -- 2) news_summaries — cached AI summaries (POST /api/news/summarize). Upsert on article_id.
+--    Structured output (mirrors Celiq): summary + artinya ("what it means") + LLM sentiment.
 create table if not exists public.news_summaries (
   article_id text primary key,
   summary    text not null,
+  artinya    text,
+  sentiment  text,
   model      text not null,
   created_at timestamptz not null default now()
 );
+-- Backfill the structured-output columns on pre-existing deployments (the base
+-- table above is created once; these add the new fields to an older table).
+alter table public.news_summaries add column if not exists artinya   text;
+alter table public.news_summaries add column if not exists sentiment text;
 
 -- 3) summary_views — free-tier quota: distinct articles summarized per address per UTC day.
 --    Upsert on (address, article_id, view_day).

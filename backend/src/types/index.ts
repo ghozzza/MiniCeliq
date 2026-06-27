@@ -16,10 +16,19 @@ export interface NewsItem {
   content?: string;
 }
 
-// AI summary cached per article id.
+// LLM-classified market tone for a news article (mirrors the frontend's
+// `Sentiment` type). Stored alongside the summary so the UI badge can use the
+// model's read of the body instead of a coarse headline-keyword guess.
+export type Sentiment = "Bullish" | "Bearish" | "Neutral";
+
+// AI summary cached per article id. Structured output (mirrors Celiq's
+// `{summary, artinya, sentiment}`): `summary` = what happened; `artinya` =
+// what it means / why it matters for a retail reader; `sentiment` = LLM tone.
 export interface SummaryRecord {
   articleId: string;
   summary: string;
+  artinya: string; // "What it means" implication block (may be "" on legacy rows)
+  sentiment: Sentiment;
   model: string;
   createdAt: string; // ISO 8601
 }

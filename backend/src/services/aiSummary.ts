@@ -8,28 +8,92 @@
 
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, APICallError } from "ai";
+import { z } from "zod";
 import { env, hasOpenRouter } from "../config/env";
 import { AppError } from "../lib/errors";
 import { supabase } from "../lib/supabase";
 import { getArticleById } from "./rssNews";
-import type { NewsItem, SummaryRecord } from "../types";
+import type { NewsItem, Sentiment, SummaryRecord } from "../types";
 
 const SUMMARY_TABLE = "news_summaries";
-const MAX_OUTPUT_TOKENS = 320;
+// Bumped from 320: the JSON envelope + the extra `artinya` block need more room
+// than a bare summary did (mirrors Celiq's 400-token budget for the same shape).
+const MAX_OUTPUT_TOKENS = 400;
 const TIMEOUT_MS = 30_000;
 
+// Structured-output prompt (mirrors Celiq's `{summary, artinya, sentiment}` shape,
+// in English). The model returns ONE JSON object: a summary, an "artinya" /
+// "what it means" implication block, and an LLM-classified market tone. Keeps the
+// same refusal-proof + thin-content rules as the old plain-text summarizer.
 const SYSTEM_PROMPT =
   "You are a concise crypto + macro news editor for a mobile app. " +
-  "You ALWAYS return a short summary. You never refuse, never apologize, never ask " +
+  "You ALWAYS return a result. You never refuse, never apologize, never ask " +
   "for more text, and never comment on how much information you were given. " +
   "Use the title plus any provided text; if the text is thin, expand the headline " +
   "into a confident, neutral summary using general background — but do not invent " +
   "specific facts (no fabricated numbers, names, dates, or quotes). " +
-  "Output only the summary itself: no preamble, labels, quotes, hype, emojis, or markdown. " +
   "Never reference a URL, link, web page, the article's location, your own access, or " +
   "yourself. Never write phrases like \"I cannot\", \"I can't\", \"I don't have\", " +
   "\"no actual article content\", \"please provide\", \"the text provided\", \"only a " +
-  "title\", \"as an AI\", \"unable to\", or \"based on the headline\".";
+  "title\", \"as an AI\", \"unable to\", or \"based on the headline\".\n\n" +
+  "Produce three fields:\n" +
+  "1. summary — 2-3 short sentences (~50-80 words) of what happened, plain English, " +
+  "no hype, no emojis, no markdown.\n" +
+  "2. artinya — 1-2 sentences (~30-50 words) on what it MEANS / why it matters for a " +
+  "retail reader: the impact or implication, NOT a restatement of the summary.\n" +
+  "3. sentiment — classify the market tone as exactly one of \"Bullish\", \"Bearish\", " +
+  "or \"Neutral\":\n" +
+  "   - Bullish: price up, adoption, favorable regulation, positive supply shock, breakout.\n" +
+  "   - Bearish: price down, regulatory crackdown, hack/breach, selloff, network issues.\n" +
+  "   - Neutral: mixed/ambiguous signals, wait-and-see, governance talk, unclear impact.\n\n" +
+  "Output ONLY valid JSON in exactly this shape, with no text before or after it:\n" +
+  "{\"summary\": \"...\", \"artinya\": \"...\", \"sentiment\": \"Bullish|Bearish|Neutral\"}\n\n" +
+  "If the body is a thin teaser, still produce a confident summary, a best-effort " +
+  "artinya, and sentiment \"Neutral\". Never refuse.";
+
+// Validates the parsed JSON envelope. `sentiment` is preprocessed to be tolerant
+// of casing / minor variants (e.g. "bullish" → "Bullish"); anything unrecognized
+// falls through to "Neutral". `artinya` is coerced to a string (empty if absent).
+const summaryJsonSchema = z.object({
+  summary: z.string().min(1),
+  artinya: z.preprocess((v) => (typeof v === "string" ? v : ""), z.string()),
+  sentiment: z.preprocess(normalizeSentiment, z.enum(["Bullish", "Bearish", "Neutral"])),
+});
+
+// Map any model output (case-insensitive, with fallback) to the Sentiment enum.
+// Also used when reading legacy cache rows whose `sentiment` column is null.
+function normalizeSentiment(value: unknown): Sentiment {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "bullish") return "Bullish";
+  if (v === "bearish") return "Bearish";
+  return "Neutral";
+}
+
+// Parse the LLM's structured output. Strips ```json / ``` fences, JSON.parses,
+// and validates with `summaryJsonSchema`. On ANY failure we fall back gracefully
+// to a Neutral record built from the raw text, so the endpoint never errors.
+function parseSummaryJson(raw: string): {
+  summary: string;
+  artinya: string;
+  sentiment: Sentiment;
+} {
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+  try {
+    const parsed = summaryJsonSchema.parse(JSON.parse(cleaned));
+    return {
+      summary: parsed.summary.trim(),
+      artinya: parsed.artinya.trim(),
+      sentiment: parsed.sentiment,
+    };
+  } catch {
+    // Not valid JSON (or failed validation) → keep whatever text we got as the
+    // summary, no implication block, neutral tone. Never throw.
+    return { summary: cleaned || raw.trim(), artinya: "", sentiment: "Neutral" };
+  }
+}
 
 // In-memory summary cache, used when Supabase is not configured.
 const memorySummaries = new Map<string, SummaryRecord>();
@@ -54,13 +118,16 @@ async function readCachedSummary(articleId: string): Promise<SummaryRecord | nul
   if (db) {
     const { data } = await db
       .from(SUMMARY_TABLE)
-      .select("article_id, summary, model, created_at")
+      .select("article_id, summary, artinya, sentiment, model, created_at")
       .eq("article_id", articleId)
       .maybeSingle();
     if (data) {
       return {
         articleId: data.article_id as string,
         summary: data.summary as string,
+        // Legacy rows (pre-structured-output) have null artinya/sentiment.
+        artinya: (data.artinya as string | null) ?? "",
+        sentiment: normalizeSentiment(data.sentiment),
         model: data.model as string,
         createdAt: data.created_at as string,
       };
@@ -77,6 +144,8 @@ async function writeCachedSummary(record: SummaryRecord): Promise<void> {
       {
         article_id: record.articleId,
         summary: record.summary,
+        artinya: record.artinya,
+        sentiment: record.sentiment,
         model: record.model,
         created_at: record.createdAt,
       },
@@ -172,16 +241,14 @@ export async function generateLLM(
 
 // Build the user prompt. We deliberately never include the raw URL: handing the
 // model a link makes it try to "fetch" the page and then disclaim that it can't.
-//   - With article body text → ask for a 2-3 sentence (~60 word) summary of that
-//     text only.
-//   - With only a title → ask for a short neutral context note that expands the
-//     headline.
+// The system prompt owns the JSON shape + field rules; the user prompt only
+// supplies the content (full body vs. headline-only) and re-pins the output.
 function buildPrompt(article: NewsItem | null, fallbackTitle?: string): string {
   const title = article?.title ?? fallbackTitle ?? "(unknown)";
   const source = article?.source;
   const body = article?.content?.trim() ?? "";
   // Generic RSS teasers ("Your day-ahead look for…") are too thin to summarize —
-  // treat anything under ~80 chars as headline-only so the model rewrites the
+  // treat anything under ~80 chars as headline-only so the model expands the
   // headline instead of refusing for "no content".
   const hasBody = body.length >= 80;
 
@@ -190,16 +257,15 @@ function buildPrompt(article: NewsItem | null, fallbackTitle?: string): string {
       `Title: ${title}\n` +
       (source ? `Source: ${source}\n` : "") +
       `\nArticle text:\n${body}\n\n` +
-      "Summarize the above in 2-3 short sentences (max ~60 words), plain English, " +
-      "no hype, no emojis. Cover what happened and why it matters."
+      "Summarize the above and output JSON exactly as instructed."
     );
   }
 
   return (
     `Headline: ${title}\n` +
     (source ? `Source: ${source}\n` : "") +
-    "\nRewrite this headline into ONE neutral, plain-language sentence (max 25 words) " +
-    "that a reader understands at a glance. Output only that sentence."
+    "\nThe full text is unavailable — work from the headline only. Be conservative: " +
+    "if the headline is ambiguous, use sentiment \"Neutral\". Output JSON exactly as instructed."
   );
 }
 
@@ -220,10 +286,13 @@ export async function summarizeArticle(
   const prompt = buildPrompt(article, titleHint);
 
   const { text, model } = await generateLLM(SYSTEM_PROMPT, prompt, MAX_OUTPUT_TOKENS);
+  const { summary, artinya, sentiment } = parseSummaryJson(text);
 
   const record: SummaryRecord = {
     articleId,
-    summary: text,
+    summary,
+    artinya,
+    sentiment,
     model,
     createdAt: new Date().toISOString(),
   };

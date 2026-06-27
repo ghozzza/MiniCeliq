@@ -5,7 +5,7 @@
 // Editorial styling: serif article title, uppercase meta, thin rules.
 import { useEffect, useState } from "react";
 import { fetchSummary, type NewsItem } from "@/lib/api";
-import { sentimentOf } from "@/lib/sentiment";
+import { sentimentOf, type Sentiment } from "@/lib/sentiment";
 import { copy } from "@/lib/copy";
 import { formatPublished } from "@/lib/time";
 
@@ -47,6 +47,11 @@ export function SummaryCard({
 }: SummaryCardProps) {
   const saved = isSaved(item.id);
   const [summary, setSummary] = useState<string | null>(null);
+  // "What it means" implication block — present only when the loaded summary
+  // carries one (absent on mock / legacy-cached summaries).
+  const [artinya, setArtinya] = useState<string | null>(null);
+  // LLM-classified tone for the loaded summary; null until it arrives.
+  const [llmSentiment, setLlmSentiment] = useState<Sentiment | null>(null);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -82,7 +87,9 @@ export function SummaryCard({
     await copyLink();
   }
 
-  const sentiment = sentimentOf(item);
+  // Prefer the LLM's read of the body once the summary loads (more accurate than
+  // the headline-keyword guess); fall back to sentimentOf(item) until then.
+  const sentiment = llmSentiment ?? sentimentOf(item);
   const tone =
     sentiment === "Bullish"
       ? { text: "text-pos", dot: "bg-pos" }
@@ -102,6 +109,8 @@ export function SummaryCard({
           return;
         }
         setSummary(res.summary);
+        setArtinya(res.artinya ?? null);
+        setLlmSentiment(res.sentiment ?? null);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -158,6 +167,17 @@ export function SummaryCard({
             <p>{summary}</p>
           )}
         </div>
+
+        {/* "What it means" — the implication block (Celiq's "Artinya"), shown
+            only once a summary with one has loaded. Thin top rule + accent kicker. */}
+        {summary !== null && !error && artinya && (
+          <div className="mt-4 border-t-[0.5px] border-rule pt-3">
+            <p className="mb-1 text-[11px] uppercase tracking-[0.09em] text-accent">
+              {copy.summary.whatItMeans}
+            </p>
+            <p className="text-[14px] leading-[1.6] text-ink-2">{artinya}</p>
+          </div>
+        )}
 
         {summary !== null && !error && (
           <p className="mt-3 text-[11px] text-ink-muted">
