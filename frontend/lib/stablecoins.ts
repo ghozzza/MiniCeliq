@@ -57,6 +57,22 @@ export interface StablecoinBalance extends Stablecoin {
   human: number;
 }
 
+// Read a single token's raw balance for a user. Used by the subscribe sheet to
+// gate the Deposit redirect on the CURRENTLY SELECTED token, not just the
+// preferred one (audit L3).
+export async function getTokenBalance(
+  user: `0x${string}`,
+  token: Stablecoin,
+): Promise<bigint> {
+  const client = getPublicClient();
+  return client.readContract({
+    address: token.address,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [user],
+  });
+}
+
 // Read all three balances for a user in one batch.
 export async function getBalances(
   user: `0x${string}`,

@@ -25,6 +25,7 @@ import {
 } from "@/lib/contract";
 import {
   STABLECOINS,
+  getTokenBalance,
   goToDeposit,
   type Stablecoin,
   type StablecoinBalance,
@@ -178,8 +179,19 @@ export function SubscribeSheet({
       return;
     }
 
-    // Low balance in the chosen token → send to Deposit instead of failing.
-    if (preferred && preferred.symbol === token.symbol && preferred.balance < amount) {
+    // Low balance in the CHOSEN token → send to Deposit instead of a guaranteed
+    // failed tx (audit L3). Read the selected token's balance fresh at submit time
+    // (covers ANY token, not just `preferred`, and catches changes since open);
+    // fall back to `preferred` if the read fails, and let it proceed if we truly
+    // can't tell.
+    let chosenBalance: bigint | null = null;
+    try {
+      chosenBalance = await getTokenBalance(address, token);
+    } catch {
+      chosenBalance =
+        preferred && preferred.symbol === token.symbol ? preferred.balance : null;
+    }
+    if (chosenBalance !== null && chosenBalance < amount) {
       goToDeposit();
       return;
     }
@@ -234,7 +246,7 @@ export function SubscribeSheet({
       onClick={busy ? undefined : onClose}
     >
       <div
-        className="mx-auto w-full max-w-md rounded-t-2xl border-t-[0.5px] border-rule-strong bg-card p-5 pb-7 shadow-[0_-8px_24px_rgba(10,37,64,0.10)]"
+        className="mx-auto max-h-[88vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-2xl border-t-[0.5px] border-rule-strong bg-card p-5 pb-7 shadow-[0_-8px_24px_rgba(10,37,64,0.10)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-rule-strong" />
