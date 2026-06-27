@@ -3,6 +3,7 @@
 // Shown when a free user runs out of daily AI summaries. Routes into SubscribeSheet.
 // No crypto jargon — copy comes from lib/copy. Editorial Celiq styling.
 import { copy } from "@/lib/copy";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 interface PaywallProps {
   onSubscribe: () => void;
@@ -10,6 +11,9 @@ interface PaywallProps {
 }
 
 export function Paywall({ onSubscribe, onClose }: PaywallProps) {
+  // Freeze the page behind the sheet (mounted only while open).
+  useBodyScrollLock();
+
   return (
     <div
       className="fixed inset-0 z-40 flex items-end bg-ink/40"

@@ -8,6 +8,7 @@ import { fetchSummary, type NewsItem } from "@/lib/api";
 import { sentimentOf, type Sentiment } from "@/lib/sentiment";
 import { copy } from "@/lib/copy";
 import { formatPublished } from "@/lib/time";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 interface SummaryCardProps {
   item: NewsItem;
@@ -45,6 +46,9 @@ export function SummaryCard({
   onClose,
   onGated,
 }: SummaryCardProps) {
+  // Freeze the page behind the sheet (mounted only while open).
+  useBodyScrollLock();
+
   const saved = isSaved(item.id);
   const [summary, setSummary] = useState<string | null>(null);
   // "What it means" implication block — present only when the loaded summary

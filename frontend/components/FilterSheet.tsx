@@ -9,6 +9,7 @@
 import { CATEGORIES, type Category } from "@/lib/category";
 import { SENTIMENTS, type Sentiment } from "@/lib/sentiment";
 import { copy } from "@/lib/copy";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 export type CategoryFilter = Category | "All";
 export type ToneFilter = Sentiment | "All";
@@ -61,6 +62,11 @@ export function FilterSheet({
   onClear,
   onClose,
 }: FilterSheetProps) {
+  // Freeze the page behind the sheet. FilterSheet is rendered by Feed only while
+  // `sheetOpen` is true ({sheetOpen && <FilterSheet/>}), so it's mounted solely
+  // when visible — an unconditional lock here applies exactly while the sheet is up.
+  useBodyScrollLock();
+
   const categories: CategoryFilter[] = ["All", ...CATEGORIES];
   const tones: ToneFilter[] = ["All", ...SENTIMENTS];
   // Clear is inert when nothing visible in this sheet is set (tone-only in For-You).

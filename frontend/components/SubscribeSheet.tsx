@@ -30,6 +30,7 @@ import {
   type StablecoinBalance,
 } from "@/lib/stablecoins";
 import { activeChain } from "@/lib/viem";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 interface SubscribeSheetProps {
   address: Address;
@@ -54,6 +55,9 @@ export function SubscribeSheet({
   onClose,
   onSubscribed,
 }: SubscribeSheetProps) {
+  // Freeze the page behind the sheet (mounted only while open).
+  useBodyScrollLock();
+
   const [plan, setPlan] = useState<Plan>(PLAN_MONTHLY);
 
   // Default the token to the user's preferred stablecoin; allow re-pick.
