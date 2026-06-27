@@ -81,7 +81,7 @@ export function FilterSheet({
       onClick={onClose}
     >
       <div
-        className="mx-auto w-full max-w-md rounded-t-2xl border-t-[0.5px] border-rule-strong bg-card p-5 pb-7 shadow-[0_-8px_24px_rgba(10,37,64,0.10)]"
+        className="mx-auto max-h-[88vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-2xl border-t-[0.5px] border-rule-strong bg-card p-5 pb-7 shadow-[0_-8px_24px_rgba(10,37,64,0.10)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-rule-strong" />

@@ -113,7 +113,7 @@ export const copy = {
     stepSubscribe: "Confirming subscription…",
     confirm: "Subscribe",
     success: "You're subscribed! Enjoy unlimited summaries.",
-    error: "Something went wrong. No charge was made if it failed.",
+    error: "Something went wrong. No subscription charge was taken.",
     lowBalance: "Top up your balance to subscribe.",
     deposit: "Deposit",
     notConfigured: "Subscriptions open soon.",
