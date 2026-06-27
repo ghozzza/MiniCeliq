@@ -86,14 +86,15 @@ Gating: MiniPay forbids message signing, so premium content is gated by a server
 - **No `require`:** every guard is `if (cond) revert CustomError(...)`.
 - **Role-based access control** (not Ownable): `DEFAULT_ADMIN_ROLE` / `MANAGER_ROLE` / `UPGRADER_ROLE`.
 - **Multi-token / multi-plan** with prices **seeded in the initializer**, all adjustable via setters; renewals stack; on-chain time-boxed promo.
-- Now on **V2**, which **auto-mints a CENY reward on every subscribe** (10 CENY monthly / 120 CENY yearly, adjustable) — best-effort (`try/catch`), so a reward-mint failure can never block a paid subscription.
+- **V2** **auto-mints a CENY reward on every subscribe** (10 CENY monthly / 120 CENY yearly, adjustable) — best-effort (`try/catch`), so a reward-mint failure can never block a paid subscription.
+- **Now on V3** (live impl `0x2b9dce…fd780`), which adds **MANAGER_ROLE-only `setSubscriptionExpiry` / `revokeSubscription`** support/QA overrides (set or wipe a user's expiry without payment). No new storage — a fully append-only, OZ-validated upgrade.
 
 **`Ceny` (CENY)** — ERC-20, capped (1,000,000,000), UUPS, AccessControl reward token. The
 `NewsSubscription` proxy holds its `MINTER_ROLE`. The reward is surfaced in the app: a **"+ Earn N CENY"**
 chip in the subscribe sheet and a **CENY balance pill** in the masthead.
 
 Source: [`contracts/src/`](contracts/src/) · Security review (pashov 12-lens + Celo layer, 0 confirmed
-findings): [`contracts/audit/`](contracts/audit/) · **42 Foundry tests pass.**
+findings): [`contracts/audit/`](contracts/audit/) · **48 Foundry tests pass.**
 
 ---
 

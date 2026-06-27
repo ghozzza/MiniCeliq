@@ -16,7 +16,7 @@ MiniCeliq is a **MiniPay (Celo) mini app** for stablecoin news subscriptions, bu
 
 | Dir | Stack | Deploy | Build / test |
 |-----|-------|--------|--------------|
-| `contracts/` | Foundry + OpenZeppelin Upgradeable v5 (UUPS) | Celo (live on Mainnet, **V2**) | `forge build` · `forge test` (**42 pass** — `NewsSubscriptionV2` 11 + `NewsSubscription` V1 20 + `Ceny` 11) |
+| `contracts/` | Foundry + OpenZeppelin Upgradeable v5 (UUPS) | Celo (live on Mainnet, **V3**) | `forge build` · `forge test` (**48 pass** — `NewsSubscriptionV3` 6 + `NewsSubscriptionV2` 11 + `NewsSubscription` V1 20 + `Ceny` 11) |
 | `frontend/` | Next.js 16 (App Router) + TypeScript + Tailwind + **viem** | Vercel (**live: `https://mini.celiq.io`**) | `pnpm install` · `pnpm build` |
 | `backend/` | Express 4 + TypeScript + viem + Supabase | **Railway** (**live: `https://miniceliq-backend-production.up.railway.app`**) | `pnpm install` · `pnpm build` |
 
@@ -34,10 +34,12 @@ git-ignored — run the pinned `forge install` commands in `contracts/README.md`
 - `initialize(admin, treasury, promoEndsAt, InitToken[])` **seeds** the allowlist + regular/promo prices at deploy;
   all stay adjustable via `setPrice` / `setPromoPrice` / `setPromoEndsAt` / `setAllowedToken`.
 - On-chain time-boxed promo: `promoPrice` + `promoEndsAt` (auto-reverts to regular price).
-- **Live proxy now runs V2** (`NewsSubscriptionV2`, impl `0xadf8…76c2`): each `subscribe` best-effort
-  mints a CENY reward to the subscriber (see reward-token section). V1 subscriber state + pricing/promo
-  were preserved through the upgrade (OZ storage-layout validated). `contracts/test/mocks/NewsSubscriptionV2.sol`
-  remains the earlier test-only upgrade fixture that proved the path.
+- **Live proxy now runs V3** (`NewsSubscriptionV3`, impl `0x2b9dce…fd780`, upgrade block 70660108): it
+  inherits V2's best-effort CENY reward mint on every `subscribe` (see reward-token section) and adds
+  **MANAGER_ROLE-only `setSubscriptionExpiry(user, expiry)` / `revokeSubscription(user)`** support/QA
+  overrides that set or wipe a user's expiry without payment (no new storage — append-only, OZ-validated).
+  V2 was impl `0xadf8…76c2`; V1 subscriber state + pricing/promo were preserved through both upgrades.
+  `contracts/test/mocks/NewsSubscriptionV2.sol` remains the earlier test-only upgrade fixture that proved the path.
 - Reviewed (pashov 12-lens + Celo layer): **0 confirmed findings**, 3 hardening items applied. See `contracts/audit/`.
 - **Admin/role key vs deployer key:** all roles (`DEFAULT_ADMIN` / `MANAGER` / `UPGRADER`) are held by
   the admin key **`0x02EF…7E45`**, which is **different from** the deployer/gas key **`0xA323…Ce49`** in

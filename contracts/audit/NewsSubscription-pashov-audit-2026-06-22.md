@@ -25,7 +25,7 @@ Three zero-cost hardening items were applied after the review (commit history sh
 |---|---|---|
 | 1 | **CEI ordering** in `subscribe` — external transfer ran before the expiry write; mitigated by `nonReentrant` but latent | ✅ Fixed — expiry is now written **before** `safeTransferFrom` (effects-before-interaction) |
 | 2 | **`treasury == address(this)`** not rejected → would lock funds | ✅ Fixed — `initialize` + `setTreasury` now revert `InvalidTreasury()` |
-| 3 | **`initializeV2` unguarded reinitializer** — front-runnable in a non-atomic upgrade | ✅ Fixed — added `onlyOwner` (defense-in-depth) |
+| 3 | **`reinitializeV2` reinitializer guard** — front-runnable in a non-atomic upgrade | ✅ Fixed — gated `reinitializer(2)` with `onlyRole(UPGRADER_ROLE)` (AccessControl, not Ownable; defense-in-depth) |
 
 ## Leads (accepted / documented, not fixed)
 

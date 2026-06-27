@@ -3,10 +3,12 @@
   "chainId": 42220,
   "deployedAt": "2026-06-22",
   "contract": "NewsSubscription (UUPS proxy)",
-  "version": "V2 — auto-mints a CENY reward on subscribe (best-effort)",
+  "version": "V3 — admin setSubscriptionExpiry / revokeSubscription overrides (support/QA); inherits V2 CENY reward auto-mint",
   "proxy": "0x3988b17eb4134eB929118244Be69798b5dF69ce7",
-  "implementation": "0xadf826d6d221bc45840abd0e09f71021181476c2",
+  "implementation": "0x2b9dcedfecaa85a54e93f6c03f1ea0332b0fd780",
+  "implementationV2": "0xadf826d6d221bc45840abd0e09f71021181476c2",
   "implementationV1": "0xa0e3B8672f628B0146E23382845b0625A4D2F722",
+  "upgradedToV3At": "2026-06-27",
   "admin": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
   "treasury": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",
   "deployer": "0xA3235414Ba1444Aaceb667e3161B183B67B8Ce49",
@@ -14,11 +16,14 @@
   "verified": true,
   "txHashes": {
     "implementationV1": "0xaabccdeb35c3408af7777e46b47b1843d927656874a8e73fe960fb15c014dd90",
-    "proxy": "0x9a0ad72d901ce071cf11a0ba8c73fdd4dc3a0e254a8a14acdf20ac33484797ee"
+    "proxy": "0x9a0ad72d901ce071cf11a0ba8c73fdd4dc3a0e254a8a14acdf20ac33484797ee",
+    "implementationV3": "0x9cd42d7c95ed0b1a86cc5912c72f6a026312c821687bbfc9b50a582dee453d2a",
+    "upgradeToV3": "0x5dcdc5cb8e925d0e4c6332544ded76dcc941fd13717dffab9be36e916762d65b"
   },
+  "upgradeBlockV3": 70660108,
   "explorer": {
     "proxy": "https://celoscan.io/address/0x3988b17eb4134eb929118244be69798b5df69ce7",
-    "implementation": "https://celoscan.io/address/0xadf826d6d221bc45840abd0e09f71021181476c2"
+    "implementation": "https://celoscan.io/address/0x2b9dcedfecaa85a54e93f6c03f1ea0332b0fd780"
   },
   "roles": {
     "DEFAULT_ADMIN_ROLE": "0x02EF49eDB08779c302770FC25dfDfa79dFB17E45",

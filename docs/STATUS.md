@@ -8,13 +8,14 @@ restart). For design rationale see [`../README.md`](../README.md); for repo rule
 
 ## 1. Snapshot — where we are
 
-**Phase: FULLY HOSTED — contract LIVE on Celo mainnet (now V2 — auto-mints a CENY reward on subscribe),
+**Phase: FULLY HOSTED — contract LIVE on Celo mainnet (now V3 — admin support/QA expiry overrides; inherits V2's CENY reward auto-mint on subscribe),
 Ceny reward token LIVE + verified, FE LIVE on Vercel at `https://mini.celiq.io`, BE LIVE on Railway.
 Registered on Talent App. All Proof-of-Ship hard-gates met. cloudflared tunnels retired.**
 
 **Live `NewsSubscription` (Celo mainnet, chainId 42220):** proxy `0x3988b17eb4134eB929118244Be69798b5dF69ce7`
-(unchanged) · **V2 impl `0xadf826d6d221bc45840abd0e09f71021181476c2`** (V1 impl was
-`0xa0e3B8672f628B0146E23382845b0625A4D2F722`) · deploy block `70222870` · admin/treasury
+(unchanged) · **V3 impl `0x2b9dcedfecaa85a54e93f6c03f1ea0332b0fd780`** (V2 impl was
+`0xadf826d6d221bc45840abd0e09f71021181476c2`, V1 `0xa0e3B8672f628B0146E23382845b0625A4D2F722`) ·
+proxy deploy block `70222870`, V3 upgrade block `70660108` · admin/treasury
 `0x02EF49eDB08779c302770FC25dfDfa79dFB17E45` · verified on Celoscan. Details: `contracts/deployments/celo-mainnet.json`.
 
 **Live `Ceny` (CENY) reward token:** proxy `0xFacb8Ba3daC93785689CBF0418b9Ad664a25d6aB` · impl
@@ -23,14 +24,14 @@ Registered on Talent App. All Proof-of-Ship hard-gates met. cloudflared tunnels 
 
 | Area | State |
 |------|-------|
-| Smart contract (`NewsSubscription`) | ✅ Built (Foundry, UUPS, AccessControl, non-custodial), security-reviewed + hardened. **Upgraded to V2 (auto-mint CENY reward).** |
-| On-chain deploy | ✅ **Celo mainnet + verified** — proxy `0x3988…69ce7` (block 70222870), **V2 impl `0xadf8…76c2`**. PoS hard-gate ✅ |
-| NewsSubscription V2 (reward) | ✅ **Live.** Every `subscribe` auto-mints CENY to the subscriber — **10 CENY (plan 0 / monthly), 120 CENY (plan 1 / yearly)** — best-effort (try/catch; a mint failure never blocks the paid sub). Adjustable via `setCenyReward` / `setCenyToken` (MANAGER). V1 subscriber state + pricing/promo preserved through the upgrade. |
+| Smart contract (`NewsSubscription`) | ✅ Built (Foundry, UUPS, AccessControl, non-custodial), security-reviewed + hardened. **Upgraded V2 (auto-mint CENY reward) → V3 (admin `setSubscriptionExpiry`/`revokeSubscription`).** |
+| On-chain deploy | ✅ **Celo mainnet + verified** — proxy `0x3988…69ce7` (block 70222870), **live V3 impl `0x2b9dce…fd780`** (upgrade block 70660108; V2 was `0xadf8…76c2`). PoS hard-gate ✅ |
+| NewsSubscription V2 (reward) | ✅ **Live.** Every `subscribe` auto-mints CENY to the subscriber — **10 CENY (plan 0 / monthly), 120 CENY (plan 1 / yearly)** — best-effort (try/catch; a mint failure never blocks the paid sub). Adjustable via `setCenyReward` / `setCenyToken` (MANAGER). V1 subscriber state + pricing/promo preserved through the upgrade. **V3 (2026-06-27) adds MANAGER-only `setSubscriptionExpiry` / `revokeSubscription` support/QA overrides (no new storage).** |
 | Frontend | ✅ **Live on Vercel at `https://mini.celiq.io`** (custom domain live, SSL active; `miniceliq.vercel.app` still serves). Next.js + viem, MiniPay-compliant, reskinned to **Celiq editorial design** + decor/micro-motion + brand logo + animated aurora. **CENY reward surfaced in the FE** (subscribe sheet "+ Earn N CENY" + "You hold X CENY"; home masthead "◆ X CENY" balance pill). ~284 KB gzip JS (<2 MB). API → **Railway backend**. |
 | Backend | ✅ **Live on Railway** (`https://miniceliq-backend-production.up.railway.app`). Express + TS. Live integrations: **Celo chain reads + OpenRouter AI summaries + Supabase (live, persistent)** — `/api/health` shows `supabase`, `openrouter`, `chain` all `true`. Smoke-tested 12/12. **cloudflared tunnels retired** (tunnels only for local dev now). |
 | Supabase (data layer) | ✅ **Live + persistent** — 4 tables, RLS enabled (service-role only), schema at `backend/supabase/schema.sql`. |
 | Ceny token (CENY) | ✅ **Live + verified on Celo mainnet** — proxy `0xFacb…d6aB`, ERC-20 capped (1B, 18 dec), UUPS, AccessControl. Auto-mint reward integrated (V2); reward now surfaced in the FE. |
-| Forge tests | ✅ **42 pass** — V2 11 + V1 20 + Ceny 11. Storage layout append-only safe (OZ-validated). |
+| Forge tests | ✅ **48 pass** — V3 6 + V2 11 + V1 20 + Ceny 11. Storage layout append-only safe (OZ-validated). |
 | Security audit | ✅ pashov 12-lens + Celo layer — **0 confirmed findings**, 3 hardening items applied (`contracts/audit/`). |
 | Live URLs | ✅ FE on Vercel (`mini.celiq.io`) · BE on Railway (`miniceliq-backend-production.up.railway.app`). **PoS hard-gate met.** |
 | Talent App registration | ✅ **Registered** (domain ownership verified via a `talentapp:project_verification` meta tag on `mini.celiq.io`). **PoS hard-gate met.** |
@@ -78,7 +79,7 @@ cloudflared tunnel --url http://localhost:4000   # BE → public URL
 findings.** Three latent leads were fixed (zero-cost):
 1. CEI ordering — `subscribe` writes `subscriptionExpiry` **before** `safeTransferFrom`.
 2. `treasury == address(this)` rejected in `initialize` + `setTreasury` (`InvalidTreasury`).
-3. `onlyOwner` added to `NewsSubscriptionV2.initializeV2`.
+3. `NewsSubscriptionV2.reinitializeV2` gated as `reinitializer(2)` + `onlyRole(UPGRADER_ROLE)` (AccessControl).
 
 Accepted/by-design leads (no code change): fee-on-transfer token shortfall (only allowlist standard
 stablecoins), promo/price approval race (centralization; optional future `maxPrice` param), admin
